@@ -9,6 +9,30 @@ This project is a **100% In-House, Zero-API-Key AI Image-to-Video Studio** built
 - **Container & Codec:** FastStart ISO-BMFF `.mp4` (`H.264 / avc1`) muxed via `src/engine/mp4-muxer.js` and saved to `media/outputs/`.
 - **Zero External API Keys:** Never require `GEMINI_API_KEY`, `OPENAI_API_KEY`, or any external paid/cloud token. All visual analysis and scene generation run in-house or via the active coding agent (`Antigravity`, `Claude Desktop`, or `Codex`).
 
+## Character movement (v1.4.0)
+- A flat image cannot move its own limbs. Never claim the image's own
+  subject is animated. The moving subject is the procedural presenter
+  (`src/engine/character.js`, drawn in front of the image) or a user
+  cutout PNG (its own layer, walk/bob/lean/hop only).
+- Presenter timeline (deterministic, pure function of `t`): walk-in
+  0–34%, point/explain/talk 34–74%, react/hop 74–100%. Actions:
+  `walk-point` (default), `explain`, `wave-react`. Toggle with
+  `characterEnabled`, choose with `characterAction` in the Scene Plan.
+- Camera: zoom 1.00→1.30, pan ~±0.06, easing blends 30% linear so
+  motion is visible from frame 1. Do not revert to the old
+  1.02→1.18 pure ease-in-out — that is why the first second looked frozen.
+- When testing, render frames at t=0, 1, 2, 3 in Node with a real
+  canvas and compare pixels; pose-only checks can miss drawing bugs
+  (e.g. legs once pointed up into the torso instead of down to the ground).
+- Natural motion (v1.5.0): smoothstep walk-in (cubic ease-in-out peaks
+  at 3x speed and looks like a dash), anticipation before the point and
+  the hop, head/torso/hem lag, squash on landing, foot lift on arcs.
+- Cinematic Natural render: 4 sub-renders per frame, HALF-frame
+  shutter, 1440p, additive ('lighter') accumulation — plain alpha
+  blending converges to 1 - 0.75^4 = 0.68 and darkens every frame by
+  32%. Verify brightness against the fast render at a still moment
+  (t=1.5s) before trusting the mode.
+
 ## How Agents Can Generate Custom Scene Plans
 When a user asks you (in Antigravity, Claude Desktop, or Codex) to direct a clip from an image in `media/inputs/` or `media/samples/`:
 1. **Option A (CLI Generator):** Run:

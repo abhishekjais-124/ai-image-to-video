@@ -8,6 +8,7 @@ import {
   renderPresetEffects,
   seededRandom
 } from '../presets/fact-presets.js';
+import { renderCharacter, renderCharacterCutout } from './character.js';
 
 /**
  * Check whether the uploaded image meets the target 1080p+ output dimensions.
@@ -244,7 +245,8 @@ export function renderFrameAtTime(ctx, {
   factTitle = '',
   factSubtitle = '',
   scenePlan = {},
-  customDrawFn = null
+  customDrawFn = null,
+  characterImg = null
 }) {
   const { width, height } = getResolutionDims(aspectRatio, resolution);
 
@@ -286,6 +288,30 @@ export function renderFrameAtTime(ctx, {
     scenePlan,
     drawCoverImage: drawTransformedCover
   });
+
+  // 2b. Character movement — the actual subject motion. A flat image
+  // cannot move its own limbs, so a presenter is drawn in front of it
+  // (or the user's transparent-PNG cutout, if supplied, as its own layer).
+  // This runs after the preset atmosphere so the character stays crisp,
+  // and before captions so the captions stay on top.
+  const characterEnabled = scenePlan.characterEnabled !== false;
+  if (characterEnabled) {
+    const characterOpts = {
+      t,
+      duration,
+      width,
+      height,
+      action: scenePlan.characterAction || 'walk-point',
+      seed: Number(scenePlan.variationSeed ?? 1),
+      focusX,
+      focusY
+    };
+    if (characterImg) {
+      renderCharacterCutout(ctx, { ...characterOpts, img: characterImg });
+    } else {
+      renderCharacter(ctx, characterOpts);
+    }
+  }
 
   // 3. Optional Custom Scene Code Hook (from Live Code Editor or Agent-Generated Scene)
   if (typeof customDrawFn === 'function') {

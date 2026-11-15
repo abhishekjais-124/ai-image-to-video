@@ -50,6 +50,8 @@ Options:
   --title <text>       Fact headline
   --subtitle <text>    Fact subtitle
   --out <name>         Output filename stem in media/generated-code/
+  --character <id>     Character action: walk-point, explain, wave-react (default: model default)
+  --no-character       Disable the presenter character
 `);
   process.exit(0);
 }
@@ -78,7 +80,9 @@ const plan = buildScenePlan({
   factSubtitle,
   motionPrompt,
   variationSeed,
-  autoSelectPreset: !args.preset
+  autoSelectPreset: !args.preset,
+  characterAction: args.character || null,
+  characterEnabled: args['no-character'] ? false : true
 });
 
 plan.imageSrc = imagePath.startsWith('/') ? imagePath : `/${imagePath}`;

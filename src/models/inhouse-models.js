@@ -2,6 +2,7 @@
 // Compatible with Browser, Antigravity, Claude Desktop, and Codex workflows.
 
 import { FACT_PRESETS, seededRandom } from '../presets/fact-presets.js';
+import { CHARACTER_ACTION_IDS } from '../engine/character.js';
 
 export const INHOUSE_MODELS = [
   {
@@ -372,7 +373,9 @@ export function buildScenePlan({
   factSubtitle = '',
   motionPrompt = '',
   variationSeed = 1,
-  autoSelectPreset = false
+  autoSelectPreset = false,
+  characterAction = null,
+  characterEnabled = true
 }) {
   const analysis = img
     ? analyzeImagePixels(img)
@@ -442,6 +445,16 @@ export function buildScenePlan({
     titleColor = '#22d3ee';
   }
 
+  // Character action: model default, overridable by the caller / UI / CLI.
+  // viral-hook points, cinematic-doc explains, mystery reacts, others point.
+  const modelCharacterAction =
+    modelId === 'cinematic-doc-v1' ? 'explain'
+    : modelId === 'mystery-noir-v1' ? 'wave-react'
+    : 'walk-point';
+  const resolvedCharacterAction = CHARACTER_ACTION_IDS.includes(characterAction)
+    ? characterAction
+    : modelCharacterAction;
+
   // Apply natural-language prompt overrides if present
   if (promptDirectives.zoomStart !== undefined) zoomStart = promptDirectives.zoomStart;
   if (promptDirectives.zoomEnd !== undefined) zoomEnd = promptDirectives.zoomEnd;
@@ -478,6 +491,8 @@ export function buildScenePlan({
     rotateDeg,
     particleCount,
     vignetteStrength,
+    characterEnabled: characterEnabled !== false,
+    characterAction: resolvedCharacterAction,
     accentColor: analysis.accentColor,
     titleColor,
     factTitle,

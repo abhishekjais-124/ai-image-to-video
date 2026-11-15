@@ -33,6 +33,114 @@ function yieldToUi() {
   });
 }
 
+export const RENDER_QUALITIES = [
+  {
+    id: 'fast',
+    name: 'Fast',
+    description: 'One render per frame, ~30s for a 3s clip. Good for checking a scene.'
+  },
+  {
+    id: 'cinematic',
+    name: 'Cinematic Natural (2–5 min)',
+    description: '4× motion-blur supersampling + 1440p supersampled render downscaled to 1080p, 20 Mbps. Use the 2–5 min budget for a natural-looking 3s clip.'
+  }
+];
+
+/** Which story beat a frame belongs to — shown live in the UI. */
+export function beatForProgress(progress) {
+  if (progress < 0.34) return 'Walk in';
+  if (progress < 0.74) return 'Point & talk';
+  return 'React';
+}
+
+/**
+ * Build the per-frame renderer shared by the WebCodecs and MediaRecorder
+ * paths, so preview === export in both qualities.
+ *
+ * - fast: one renderFrameAtTime per 30 FPS frame.
+ * - cinematic: 4 sub-renders spread across one frame duration (real
+ *   motion blur — fast limbs/heads smear naturally instead of strobing),
+ *   each rendered at 1440p and accumulated, then downscaled to the
+ *   1080p output. That is ~9× the render work of fast mode, which is
+ *   exactly what the 2–5 minute budget is for. Output is still
+ *   30.000 FPS CFR, 1080p, H.264.
+ * The finished frame is also mirrored to the stage canvas, so the UI
+ * shows the frame being rendered live.
+ */
+export function makeFrameRenderer({
+  offscreenCanvas, offCtx, width, height,
+  img, duration, aspectRatio, resolution,
+  presetId, factTitle, factSubtitle, scenePlan,
+  customDrawFn, characterImg = null, mirrorCtx = null,
+  quality = 'fast'
+}) {
+  const cinematic = quality === 'cinematic';
+  let hiCanvas = null;
+  let hiCtx = null;
+  let accumCanvas = null;
+  let accumCtx = null;
+
+  const mirror = () => {
+    if (!mirrorCtx || !mirrorCtx.canvas) return;
+    if (mirrorCtx.canvas.width !== width) mirrorCtx.canvas.width = width;
+    if (mirrorCtx.canvas.height !== height) mirrorCtx.canvas.height = height;
+    mirrorCtx.drawImage(offscreenCanvas, 0, 0);
+  };
+
+  const renderBase = (ctx, renderT, renderResolution) => {
+    renderFrameAtTime(ctx, {
+      img, t: renderT, duration, aspectRatio,
+      resolution: renderResolution, presetId,
+      factTitle, factSubtitle, scenePlan,
+      customDrawFn, characterImg
+    });
+  };
+
+  return function renderFrame(t) {
+    if (!cinematic) {
+      renderBase(offCtx, t, resolution);
+      mirror();
+      return;
+    }
+    if (!hiCanvas) {
+      const hi = getResolutionDims(aspectRatio, '1440p');
+      hiCanvas = document.createElement('canvas');
+      hiCanvas.width = hi.width;
+      hiCanvas.height = hi.height;
+      hiCtx = hiCanvas.getContext('2d', { alpha: false });
+      accumCanvas = document.createElement('canvas');
+      accumCanvas.width = hi.width;
+      accumCanvas.height = hi.height;
+      accumCtx = accumCanvas.getContext('2d', { alpha: false });
+    }
+    const samples = 4;
+    accumCtx.save();
+    // Additive accumulation: drawing with globalAlpha 0.25 four times
+    // onto black does NOT sum to 1 — it converges to 1 - 0.75^4 = 0.68,
+    // which made every cinematic frame 32% too dark. 'lighter' adds
+    // 0.25 x 4 = 1.0 exactly.
+    accumCtx.globalCompositeOperation = 'lighter';
+    accumCtx.globalAlpha = 1 / samples;
+    accumCtx.fillStyle = '#000';
+    accumCtx.fillRect(0, 0, accumCanvas.width, accumCanvas.height);
+    // Half-frame shutter (1/60s): a full-frame shutter at walk speed
+    // ghosts the character into 4 separate copies. Half-frame gives a
+    // natural smear on fast limbs and almost none when he is standing.
+    for (let k = 0; k < samples; k++) {
+      const tSub = Math.max(0, Math.min(duration - 1e-4, t + ((k + 0.5) / samples - 0.5) * 0.5 / FIXED_FPS));
+      renderBase(hiCtx, tSub, '1440p');
+      accumCtx.drawImage(hiCanvas, 0, 0);
+    }
+    accumCtx.restore();
+    // Supersampled downscale to the 1080p output canvas.
+    offCtx.save();
+    offCtx.globalAlpha = 1;
+    offCtx.drawImage(accumCanvas, 0, 0, width, height);
+    offCtx.restore();
+    mirror();
+  };
+}
+
 /**
  * Find the best supported H.264 WebCodecs configuration for the target 1080p/1440p dimensions at 30 FPS.
  */
@@ -98,8 +206,10 @@ async function encodeWithWebCodecs({
   factSubtitle,
   scenePlan,
   customDrawFn,
+  characterImg = null,
   mirrorCtx,
-  onProgress
+  onProgress,
+  renderFrame = null
 }) {
   const encodedSamples = [];
   let avcDescription = null;
@@ -134,23 +244,14 @@ async function encodeWithWebCodecs({
 
     const t = frameIndex / FIXED_FPS;
 
-    renderFrameAtTime(offCtx, {
-      img,
-      t,
-      duration,
-      aspectRatio,
-      resolution,
-      presetId,
-      factTitle,
-      factSubtitle,
-      scenePlan,
-      customDrawFn
-    });
-
-    if (mirrorCtx && mirrorCtx.canvas) {
-      if (mirrorCtx.canvas.width !== width) mirrorCtx.canvas.width = width;
-      if (mirrorCtx.canvas.height !== height) mirrorCtx.canvas.height = height;
-      mirrorCtx.drawImage(offscreenCanvas, 0, 0);
+    if (typeof renderFrame === 'function') {
+      renderFrame(t);
+    } else {
+      renderFrameAtTime(offCtx, {
+        img, t, duration, aspectRatio, resolution,
+        presetId, factTitle, factSubtitle, scenePlan,
+        customDrawFn, characterImg
+      });
     }
 
     const timestampMicros = Math.round((frameIndex * 1_000_000) / FIXED_FPS);
@@ -239,19 +340,49 @@ export async function exportClipToMp4({
   factSubtitle = '',
   scenePlan = {},
   customDrawFn = null,
+  characterImg = null,
   mirrorCtx = null,
-  onProgress = null
+  onProgress = null,
+  quality = 'fast'
 }) {
   const { width, height } = getResolutionDims(aspectRatio, resolution);
   const totalFrames = Math.round(duration * FIXED_FPS);
+  const startedAt = Date.now();
+
+  // Live progress: elapsed + ETA + story beat, so the UI can show the
+  // render happening instead of a bare percentage.
+  const progressWithEta = (info) => {
+    if (typeof onProgress !== 'function') return;
+    const done = info.frame || 0;
+    const elapsedMs = Date.now() - startedAt;
+    const etaMs = done > 0 && done < totalFrames
+      ? Math.round((elapsedMs * (totalFrames - done)) / done)
+      : 0;
+    onProgress({
+      ...info,
+      elapsedMs,
+      etaMs,
+      beat: beatForProgress(done / Math.max(1, totalFrames)),
+      quality
+    });
+  };
+  progressWithEta({ frame: 0, totalFrames, percent: 0, phase: 'analysing' });
 
   const offscreenCanvas = document.createElement('canvas');
   offscreenCanvas.width = width;
   offscreenCanvas.height = height;
   const offCtx = offscreenCanvas.getContext('2d', { alpha: false });
 
+  const renderFrame = makeFrameRenderer({
+    offscreenCanvas, offCtx, width, height,
+    img, duration, aspectRatio, resolution,
+    presetId, factTitle, factSubtitle, scenePlan,
+    customDrawFn, characterImg, mirrorCtx, quality
+  });
+
   // 1. Try Primary Path: WebCodecs H.264 -> In-House FastStart ISO-BMFF MP4 Muxer
   const h264Config = await findSupportedH264Config(width, height);
+  if (h264Config && quality === 'cinematic') h264Config.bitrate = 20_000_000;
   if (h264Config) {
     try {
       return await encodeWithWebCodecs({
@@ -270,8 +401,10 @@ export async function exportClipToMp4({
         factSubtitle,
         scenePlan,
         customDrawFn,
+        characterImg,
         mirrorCtx,
-        onProgress
+        onProgress: progressWithEta,
+        renderFrame
       });
     } catch (webCodecsErr) {
       console.warn('WebCodecs H.264 path failed, falling back to MediaRecorder:', webCodecsErr);
@@ -294,8 +427,8 @@ export async function exportClipToMp4({
 
   const stream = offscreenCanvas.captureStream(FIXED_FPS);
   const recorderOptions = supportedMime
-    ? { mimeType: supportedMime, videoBitsPerSecond: 12_000_000 }
-    : { videoBitsPerSecond: 12_000_000 };
+    ? { mimeType: supportedMime, videoBitsPerSecond: quality === 'cinematic' ? 20_000_000 : 12_000_000 }
+    : { videoBitsPerSecond: quality === 'cinematic' ? 20_000_000 : 12_000_000 };
 
   const recorder = new MediaRecorder(stream, recorderOptions);
 
@@ -314,31 +447,14 @@ export async function exportClipToMp4({
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const t = frameIndex / FIXED_FPS;
-    renderFrameAtTime(offCtx, {
-      img,
-      t,
-      duration,
-      aspectRatio,
-      resolution,
-      presetId,
-      factTitle,
-      factSubtitle,
-      scenePlan,
-      customDrawFn
+    renderFrame(t);
+
+    progressWithEta({
+      frame: frameIndex + 1,
+      totalFrames,
+      percent: Math.round(((frameIndex + 1) / totalFrames) * 100),
+      phase: 'recording'
     });
-
-    if (mirrorCtx && mirrorCtx.canvas) {
-      mirrorCtx.drawImage(offscreenCanvas, 0, 0);
-    }
-
-    if (typeof onProgress === 'function') {
-      onProgress({
-        frame: frameIndex + 1,
-        totalFrames,
-        percent: Math.round(((frameIndex + 1) / totalFrames) * 100),
-        phase: 'recording'
-      });
-    }
 
     await new Promise((r) => setTimeout(r, frameIntervalMs));
   }

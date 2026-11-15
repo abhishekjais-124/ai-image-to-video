@@ -17,6 +17,8 @@ import {
   exportClipToMp4,
   saveVideoToOutputs
 } from '../engine/exporter.js';
+import { CHARACTER_ACTIONS } from '../engine/character.js';
+import { RENDER_QUALITIES, beatForProgress } from '../engine/exporter.js';
 
 // Built-in lossless 1080x1920 SVG Data URLs so samples always load even in sandboxed/embedded previews
 const BUILTIN_SAMPLES = {
@@ -71,7 +73,8 @@ const BUILTIN_SAMPLES = {
 const state = {
   aspectRatio: '9:16',
   resolution: '1080p',
-  duration: 4,
+  duration: 3,
+  renderQuality: 'cinematic',
   modelId: 'saliency-vision',
   variationSeed: 1,
   presetId: 'documentary-kenburns',
@@ -83,6 +86,10 @@ const state = {
   factSubtitle:
     'The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.',
   scenePlan: {},
+  characterEnabled: true,
+  characterAction: 'walk-point',
+  characterImgElement: null,
+  characterImgName: '',
   customCodeSource: '',
   customDrawFn: null,
   editorTab: 'json', // 'json' | 'js' | 'batch'
@@ -132,10 +139,20 @@ const btnShorts = document.getElementById('btnShorts');
 const btnLandscape = document.getElementById('btnLandscape');
 const selResolution = document.getElementById('selResolution');
 const selDuration = document.getElementById('selDuration');
+const selQuality = document.getElementById('selQuality');
+const qualityHintEl = document.getElementById('qualityHint');
+const renderStatusWrap = document.getElementById('renderStatusWrap');
+const renderStatusText = document.getElementById('renderStatusText');
+const renderBeatText = document.getElementById('renderBeatText');
 const selModel = document.getElementById('selModel');
 const modelDescEl = document.getElementById('modelDesc');
 const selPreset = document.getElementById('selPreset');
 const presetDescEl = document.getElementById('presetDesc');
+const selCharacterAction = document.getElementById('selCharacterAction');
+const chkCharacter = document.getElementById('chkCharacter');
+const btnCharacterUpload = document.getElementById('btnCharacterUpload');
+const characterFileInput = document.getElementById('characterFileInput');
+const characterFileNameEl = document.getElementById('characterFileName');
 const motionPromptInput = document.getElementById('motionPrompt');
 
 const factTitleInput = document.getElementById('factTitle');
@@ -194,6 +211,16 @@ function initDropdowns() {
     (p) => `<option value="${p.id}">${p.name}</option>`
   ).join('');
   selPreset.value = state.presetId;
+
+  selQuality.innerHTML = RENDER_QUALITIES.map(
+    (q) => `<option value="${q.id}" title="${q.description}">${q.name}</option>`
+  ).join('');
+  selQuality.value = state.renderQuality;
+
+  selCharacterAction.innerHTML = CHARACTER_ACTIONS.map(
+    (a) => `<option value="${a.id}" title="${a.description}">${a.name}</option>`
+  ).join('');
+  selCharacterAction.value = state.characterAction;
 
   updateDescriptions();
 }
@@ -311,7 +338,9 @@ function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
     factSubtitle: state.factSubtitle,
     motionPrompt: state.motionPrompt,
     variationSeed: state.variationSeed,
-    autoSelectPreset
+    autoSelectPreset,
+    characterAction: state.characterAction,
+    characterEnabled: state.characterEnabled
   });
 
   state.scenePlan = plan;
@@ -396,7 +425,8 @@ function renderCurrentFrame() {
     factTitle: state.factTitle,
     factSubtitle: state.factSubtitle,
     scenePlan: state.scenePlan,
-    customDrawFn: state.customDrawFn
+    customDrawFn: state.customDrawFn,
+    characterImg: state.characterImgElement
   });
 
   frameScrubber.value = String(clampedFrame);
@@ -437,13 +467,42 @@ function triggerBrowserDownload(blob, fileName) {
   return blobUrl;
 }
 
+function formatEta(ms) {
+  if (!ms || ms <= 0) return 'almost done';
+  const s = Math.round(ms / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s left` : `${s}s left`;
+}
+function formatElapsed(ms) {
+  const s = Math.floor((ms || 0) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+// Live render update: called for every frame the exporter finishes, so
+// the stage canvas (mirrored frame) + this text move together in real time.
+function updateLiveRenderStatus({ frame, totalFrames, percent, phase, beat, elapsedMs, etaMs, quality }) {
+  renderStatusWrap.style.display = 'flex';
+  exportProgressWrap.style.display = 'flex';
+  const phaseLabel = { analysing: 'Analysing image…', encoding: 'Rendering frames…', recording: 'Recording frames…', muxing: 'Muxing MP4…' }[phase] || phase;
+  renderStatusText.textContent =
+    `${phaseLabel} Frame ${frame}/${totalFrames} · ${percent}% · ${formatElapsed(elapsedMs)} elapsed · ${formatEta(etaMs)}`;
+  const beatName = beat || beatForProgress(frame / Math.max(1, totalFrames));
+  const total = totalFrames;
+  renderBeatText.textContent =
+    `Now: ${beatName}  —  Walk in (1–${Math.round(total * 0.34)}) · Point & talk (${Math.round(total * 0.34) + 1}–${Math.round(total * 0.74)}) · React (${Math.round(total * 0.74) + 1}–${total})  ·  ${quality === 'cinematic' ? 'Cinematic Natural' : 'Fast'}`;
+  exportProgressBar.style.width = `${percent}%`;
+}
+
 async function handleExportSingleClip() {
   if (state.isExporting) return;
 
   state.isExporting = true;
+  window.__exportStartedAt = Date.now();
   btnExportMp4.disabled = true;
   btnExportMp4.textContent = 'Starting…';
+  renderStatusWrap.style.display = 'flex';
   exportProgressWrap.style.display = 'flex';
+  renderStatusText.textContent = state.renderQuality === 'cinematic'
+    ? 'Cinematic Natural render — 2–5 min for a 3s clip. Watch the stage: every frame appears live as it renders.'
+    : 'Fast render starting…';
   exportProgressBar.style.width = '2%';
   exportProgressText.textContent = 'Preparing 1080p 30 FPS encoder…';
   exportVerifyBadge.style.display = 'none';
@@ -464,15 +523,17 @@ async function handleExportSingleClip() {
       factSubtitle: state.factSubtitle,
       scenePlan: state.scenePlan,
       customDrawFn: state.customDrawFn,
+      characterImg: state.characterImgElement,
       mirrorCtx: stageCtx,
-      onProgress: ({ frame, totalFrames, percent, phase }) => {
-        exportProgressBar.style.width = `${percent}%`;
+      quality: state.renderQuality,
+      onProgress: (info) => {
+        updateLiveRenderStatus(info);
         btnExportMp4.textContent =
-          phase === 'muxing' ? 'Muxing MP4…' : `Exporting ${percent}%…`;
+          info.phase === 'muxing' ? 'Muxing MP4…' : `Exporting ${info.percent}%…`;
         exportProgressText.textContent =
-          phase === 'muxing'
+          info.phase === 'muxing'
             ? 'Finalizing FastStart H.264 MP4…'
-            : `Rendering frame ${frame} of ${totalFrames} (${percent}%)`;
+            : `Rendering frame ${info.frame} of ${info.totalFrames} (${info.percent}%) · ${info.beat || ''}`;
       }
     });
 
@@ -493,6 +554,7 @@ async function handleExportSingleClip() {
     const sizeMb = v.byteLength / (1024 * 1024);
     const kb = sizeMb >= 1 ? `${sizeMb.toFixed(1)} MB` : `${(v.byteLength / 1024).toFixed(0)} KB`;
 
+    renderStatusText.textContent = `✓ Rendered in ${formatElapsed(Date.now() - (window.__exportStartedAt || Date.now()))} — watch it back above, then download below.`;
     btnExportMp4.textContent = '✓ Exported MP4';
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner ok';
@@ -625,7 +687,9 @@ async function runBatchExport() {
         factTitle: item.factTitle,
         factSubtitle: item.factSubtitle,
         motionPrompt: state.motionPrompt,
-        variationSeed: i + 1
+        variationSeed: i + 1,
+        characterAction: state.characterAction,
+        characterEnabled: state.characterEnabled
       });
 
       let batchCustomFn = null;
@@ -647,11 +711,13 @@ async function runBatchExport() {
         factSubtitle: item.factSubtitle,
         scenePlan: plan,
         customDrawFn: batchCustomFn,
+        characterImg: state.characterImgElement,
         mirrorCtx: stageCtx,
-        onProgress: ({ percent }) => {
-          exportProgressBar.style.width = `${percent}%`;
-          btnRunBatch.textContent = `Clip ${i + 1}/${state.batchQueue.length} (${percent}%)…`;
-          exportProgressText.textContent = `Clip ${i + 1} of ${state.batchQueue.length} · ${percent}%`;
+        quality: state.renderQuality,
+        onProgress: (info) => {
+          updateLiveRenderStatus(info);
+          btnRunBatch.textContent = `Clip ${i + 1}/${state.batchQueue.length} (${info.percent}%)…`;
+          exportProgressText.textContent = `Clip ${i + 1} of ${state.batchQueue.length} · ${info.percent}% · ${info.beat || ''}`;
         }
       });
 
@@ -739,6 +805,14 @@ async function loadSavedSceneFromUrl(url) {
     if (data.presetId && FACT_PRESETS.some((p) => p.id === data.presetId)) {
       state.presetId = data.presetId;
       selPreset.value = data.presetId;
+    }
+    if (typeof data.characterAction === 'string' && CHARACTER_ACTIONS.some((a) => a.id === data.characterAction)) {
+      state.characterAction = data.characterAction;
+      selCharacterAction.value = data.characterAction;
+    }
+    if (typeof data.characterEnabled === 'boolean') {
+      state.characterEnabled = data.characterEnabled;
+      chkCharacter.checked = data.characterEnabled;
     }
     if (typeof data.factTitle === 'string') {
       state.factTitle = data.factTitle;
@@ -883,6 +957,12 @@ function bindEvents() {
     rebuildScenePlanFromModel();
   });
 
+  selQuality.addEventListener('change', () => {
+    state.renderQuality = selQuality.value;
+    const q = RENDER_QUALITIES.find((x) => x.id === state.renderQuality);
+    if (q && qualityHintEl) qualityHintEl.textContent = q.description + (state.renderQuality === 'cinematic' ? ' The stage shows every frame live as it renders.' : '');
+  });
+
   selDuration.addEventListener('change', () => {
     state.duration = Number(selDuration.value);
     state.currentFrame = 0;
@@ -920,6 +1000,36 @@ function bindEvents() {
     state.scenePlan.factSubtitle = state.factSubtitle;
     if (state.editorTab === 'json') syncEditorContent();
     renderCurrentFrame();
+  });
+
+  selCharacterAction.addEventListener('change', () => {
+    state.characterAction = selCharacterAction.value;
+    rebuildScenePlanFromModel({ autoSelectPreset: false });
+  });
+
+  chkCharacter.addEventListener('change', () => {
+    state.characterEnabled = chkCharacter.checked;
+    rebuildScenePlanFromModel({ autoSelectPreset: false });
+  });
+
+  btnCharacterUpload.addEventListener('click', () => characterFileInput.click());
+  characterFileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      loadImageElement(ev.target.result)
+        .then((img) => {
+          state.characterImgElement = img;
+          state.characterImgName = file.name;
+          characterFileNameEl.textContent = `Cutout: ${file.name} — it walks instead of the drawn presenter`;
+          renderCurrentFrame();
+        })
+        .catch(() => {
+          characterFileNameEl.textContent = `Could not load ${file.name}`;
+        });
+    };
+    reader.readAsDataURL(file);
   });
 
   btnVariation.addEventListener('click', () => {

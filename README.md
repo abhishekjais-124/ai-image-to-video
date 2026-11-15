@@ -2,6 +2,10 @@
 
 Convert static images into **3–5 second cinematic 1080p+ video clips at a locked 30.000 FPS Constant Frame Rate (`.mp4`)** (`9:16 Vertical Shorts` & `16:9 Widescreen`) at **$0 cost** with **zero external API keys** and **zero npm dependencies**.
 
+**v1.5.0 — natural character movement + Cinematic Natural render:** the presenter now moves like a person (see below), and export has a slow, high-quality mode that uses the full 2–5 minute budget for one 3s clip.
+
+**v1.4.0 — real character movement:** a flat image on its own can only be moved by the camera, so the studio now draws a procedural flat-2D presenter in front of the image who **walks in, points at the subject, talks/gestures, blinks, and reacts** — with legs, arms, head and mouth all animated as a pure function of time at 30 FPS. You can also upload your own character as a transparent-PNG cutout and it walks instead. See [Character movement](#character-movement) below.
+
 Designed to run identically in **Antigravity**, **Claude Desktop**, **Codex**, or any modern browser.
 
 ---
@@ -34,6 +38,54 @@ npm run generate -- --image media/samples/sample-ancient-pyramid.svg --model vir
 
 ---
 
+## Character movement
+
+A single flat image cannot move its own limbs — that is a hard limit of
+image-to-video from one layer, not a bug. The studio works around it
+two ways, both deterministic at 30 FPS (preview === export):
+
+1. **Drawn presenter (default, on)** — `src/engine/character.js` draws a
+   flat-2D cartoon presenter who walks in from the side (0–28% of the
+   clip), points at the detected subject and talks (28–72%), then reacts
+   with a hop and raised arms (72–100%). Legs step, arms swing/point/
+   gesture, the head tilts, eyes blink every ~2.7s, and the mouth opens
+   while talking. Actions: `walk-point`, `explain`, `wave-react`
+   (sidebar → Character, or `--character <id>` / `--no-character` on the CLI).
+2. **Your own cutout** — upload a transparent PNG in the sidebar
+   (Character → Upload character cutout). The cutout becomes its own
+   layer and walks, bobs, leans and hops independently of the background
+   camera. A flat PNG still cannot articulate limbs; for articulated
+   limbs use the drawn presenter.
+
+The camera was also made visibly faster in v1.4.0: zoom is now
+1.00×→1.30× (was 1.02×→1.18×), pan is ~2× larger, and the ease curve
+blends in 30% linear motion so the first second is no longer frozen.
+Dust/fog/grain particles are 2× larger and brighter for the same reason.
+
+### Natural motion (v1.5.0)
+The presenter is animated with the same principles as hand-drawn
+animation, all deterministic at 30 FPS:
+- **Slow in / slow out:** the walk-in uses smoothstep (peak 1.5×
+  average speed — cubic ease-in-out peaked at 3× and read as a dash),
+  starts just off the edge so he is visible from the first frames.
+- **Anticipation:** the pointing arm winds back before it launches,
+  and he crouches before the reaction hop.
+- **Follow-through:** the head lags the torso, the torso lags the hips;
+  hair and shirt hem trail behind with their own lag.
+- **Squash & stretch:** he squashes on landing and on the hop, then
+  springs back. Feet lift along an arc while walking, never drag.
+- **Talking:** the mouth opens in syllable bursts with pauses, not a
+  metronome sine. Breathing and idle sway are layered sines, never a
+  perfect loop. The camera has a gentle layered handheld drift.
+- **Cinematic Natural render (default):** 4 sub-renders per frame over
+  a half-frame shutter (real motion blur — a full-frame shutter ghosted
+  him into 4 copies) at 1440p, accumulated additively and downscaled
+  to 1080p, 20 Mbps. ~6× the work of Fast mode: a 3s clip takes
+  2–5 minutes. Fast mode (one render per frame, ~30s) is still there
+  for checking a scene. During either render the stage shows every
+  frame live as it is encoded, with phase, frame, elapsed time, ETA
+  and the current story beat (Walk in · Point & talk · React).
+
 ## In-House Models & Visual Presets
 
 ### 5 Selectable In-House Director Models (`src/models/inhouse-models.js`)
@@ -64,6 +116,7 @@ ai-image-to-video/
 │   └── samples/          # Built-in 9:16 vector test images for Fact Shorts
 ├── src/
 │   ├── engine/
+│   │   ├── character.js      # Procedural presenter + cutout layer (walk/point/talk/react, 30 FPS)
 │   │   ├── renderer.js       # Cover-fit, word-wrapped, 30 FPS deterministic renderer
 │   │   ├── mp4-muxer.js      # Zero-dependency ISO-BMFF H.264 FastStart MP4 muxer & verifier
 │   │   └── exporter.js       # Frame-by-frame WebCodecs H.264 encoder & batch pipeline

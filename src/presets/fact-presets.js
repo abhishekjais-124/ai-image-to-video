@@ -24,12 +24,12 @@ export const FACT_PRESETS = [
     description:
       'Smooth camera push toward the focal point with warm floating dust motes and documentary vignette.',
     defaults: {
-      zoomStart: 1.02,
-      zoomEnd: 1.18,
-      panX: -0.03,
-      panY: -0.04,
-      rotateDeg: 0.4,
-      particleCount: 65,
+      zoomStart: 1.00,
+      zoomEnd: 1.30,
+      panX: -0.06,
+      panY: -0.05,
+      rotateDeg: 0.8,
+      particleCount: 90,
       vignetteStrength: 0.72,
       warmth: 0.12
     }
@@ -41,12 +41,12 @@ export const FACT_PRESETS = [
     description:
       'Dynamic 3D orbital pan with a sweeping volumetric spotlight and specular light flare over the subject.',
     defaults: {
-      zoomStart: 1.05,
-      zoomEnd: 1.2,
-      panX: 0.04,
-      panY: -0.03,
-      rotateDeg: -1.1,
-      particleCount: 40,
+      zoomStart: 1.03,
+      zoomEnd: 1.32,
+      panX: 0.06,
+      panY: -0.04,
+      rotateDeg: -1.6,
+      particleCount: 60,
       vignetteStrength: 0.82,
       warmth: 0.08
     }
@@ -58,12 +58,12 @@ export const FACT_PRESETS = [
     description:
       'Layered rolling atmospheric fog, subtle handheld documentary camera sway, and deep shadow pulses.',
     defaults: {
-      zoomStart: 1.06,
-      zoomEnd: 1.16,
-      panX: -0.02,
-      panY: 0.02,
+      zoomStart: 1.04,
+      zoomEnd: 1.28,
+      panX: -0.04,
+      panY: 0.04,
       rotateDeg: 0.6,
-      particleCount: 45,
+      particleCount: 65,
       vignetteStrength: 0.86,
       warmth: -0.14
     }
@@ -75,12 +75,12 @@ export const FACT_PRESETS = [
     description:
       'Holographic HUD grid, sweeping cyan scanline, RGB slice glitch pulses, and digital telemetry frame.',
     defaults: {
-      zoomStart: 1.03,
-      zoomEnd: 1.15,
+      zoomStart: 1.02,
+      zoomEnd: 1.28,
       panX: 0.0,
-      panY: -0.03,
+      panY: -0.05,
       rotateDeg: 0.0,
-      particleCount: 50,
+      particleCount: 70,
       vignetteStrength: 0.75,
       warmth: -0.18
     }
@@ -92,12 +92,12 @@ export const FACT_PRESETS = [
     description:
       'Authentic 16mm/35mm film grain, organic amber light leaks, gate weave, and vertical celluloid scratches.',
     defaults: {
-      zoomStart: 1.04,
-      zoomEnd: 1.14,
-      panX: 0.025,
-      panY: -0.025,
+      zoomStart: 1.02,
+      zoomEnd: 1.26,
+      panX: 0.04,
+      panY: -0.04,
       rotateDeg: 0.35,
-      particleCount: 35,
+      particleCount: 55,
       vignetteStrength: 0.78,
       warmth: 0.22
     }
@@ -130,7 +130,9 @@ export function easeInOutCubic(x) {
  */
 export function computeCameraTransform(t, duration, presetId, scenePlan = {}) {
   const progress = Math.max(0, Math.min(1, t / Math.max(0.1, duration)));
-  const eased = easeInOutCubic(progress);
+  // Pure ease-in-out is ~0.008 eased at 12.5% progress — the first second
+  // looked frozen. Blend in 30% linear so the camera moves from frame 1.
+  const eased = 0.30 * progress + 0.70 * easeInOutCubic(progress);
 
   const zoomStart = Number(scenePlan.zoomStart ?? 1.03);
   const zoomEnd = Number(scenePlan.zoomEnd ?? 1.18);
@@ -160,6 +162,13 @@ export function computeCameraTransform(t, duration, presetId, scenePlan = {}) {
     // Smooth orbital arc
     offsetX += Math.sin(progress * Math.PI) * 0.018;
   }
+
+  // Natural handheld: layered slow drift + tiny fast tremor, deterministic.
+  // A locked-off camera reads as a slideshow; a real handheld camera
+  // never sits perfectly still, but it never jerks either.
+  offsetX += Math.sin(t * 0.9 + 1.2) * 0.0035 + Math.sin(t * 2.3) * 0.0012;
+  offsetY += Math.cos(t * 0.7) * 0.0035 + Math.sin(t * 1.9 + 0.6) * 0.0012;
+  rotationRad += Math.sin(t * 0.8 + 0.4) * 0.0018;
 
   return { scale, offsetX, offsetY, rotationRad, progress, eased };
 }
@@ -219,15 +228,15 @@ function renderDocumentaryDust(ctx, t, duration, width, height, scenePlan) {
     const startX = rng() * width;
     const startY = rng() * height;
     const depth = 0.4 + rng() * 1.6; // parallax depth
-    const radius = (1.2 + rng() * 3.4) * (width / 1080) * (depth * 0.75);
-    const speedY = (24 + rng() * 48) * depth;
+    const radius = (2.5 + rng() * 6.0) * (width / 1080) * (depth * 0.75);
+    const speedY = (40 + rng() * 70) * depth;
     const speedX = (rng() - 0.5) * 28 * depth;
     const phase = rng() * Math.PI * 2;
 
     const x = (((startX + speedX * t + Math.sin(t * 1.8 + phase) * 18) % width) + width) % width;
     const y = (((startY - speedY * t) % height) + height) % height;
     const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 3.4 + phase));
-    const alpha = Math.min(0.85, (0.2 + rng() * 0.5) * twinkle);
+    const alpha = Math.min(0.9, (0.35 + rng() * 0.55) * twinkle);
 
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -318,7 +327,7 @@ function renderMysteryFog(ctx, t, duration, width, height, scenePlan) {
     const x = (((baseX + driftSpeed * t) % (width + puffRadius * 2)) + (width + puffRadius * 2)) %
       (width + puffRadius * 2) - puffRadius;
     const y = baseY + Math.sin(t * 1.1 + i) * (height * 0.02);
-    const alpha = 0.07 + 0.05 * Math.sin(t * 1.5 + i * 0.7);
+    const alpha = 0.12 + 0.08 * Math.sin(t * 1.5 + i * 0.7);
 
     const fogGrad = ctx.createRadialGradient(x, y, puffRadius * 0.1, x, y, puffRadius);
     fogGrad.addColorStop(0, `rgba(200, 220, 238, ${alpha.toFixed(3)})`);
@@ -470,11 +479,11 @@ function renderVintageFilm(ctx, t, duration, width, height, scenePlan) {
   }
 
   // Coarse 16mm grain specks
-  const speckCount = 140;
+  const speckCount = 220;
   for (let i = 0; i < speckCount; i++) {
     const gx = rng() * width;
     const gy = rng() * height;
-    const gSize = (1 + rng() * 2.2) * (width / 1080);
+    const gSize = (1.5 + rng() * 3.0) * (width / 1080);
     const isLight = rng() > 0.45;
     ctx.fillStyle = isLight ? 'rgba(255, 245, 225, 0.16)' : 'rgba(15, 10, 5, 0.22)';
     ctx.fillRect(gx, gy, gSize, gSize);
