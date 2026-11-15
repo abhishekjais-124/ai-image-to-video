@@ -1,5 +1,4 @@
-// Studio UI Controller (ES Module)
-// Drives the 1080p+ / 30 FPS Canvas Stage, In-House Model Selector, and Live Code Editor.
+// Studio UI Controller (Part 2: Frame-Accurate 1080p/30FPS H.264 MP4 Export + Batch Mode)
 
 import {
   FIXED_FPS,
@@ -14,6 +13,10 @@ import {
   INHOUSE_MODELS,
   buildScenePlan
 } from '../models/inhouse-models.js';
+import {
+  exportClipToMp4,
+  saveVideoToOutputs
+} from '../engine/exporter.js';
 
 const state = {
   aspectRatio: '9:16',
@@ -32,10 +35,13 @@ const state = {
 // Available args: ctx, { t, frame, fps, duration, progress, width, height, focusX, focusY }
 `,
   customDrawFn: null,
-  editorTab: 'json', // 'json' | 'js'
+  editorTab: 'json', // 'json' | 'js' | 'batch'
   isPlaying: true,
+  isExporting: false,
   currentFrame: 0,
-  lastTickTime: 0
+  lastTickTime: 0,
+  batchQueue: [],
+  outputsList: []
 };
 
 // DOM Elements
@@ -66,17 +72,33 @@ const frameScrubber = document.getElementById('frameScrubber');
 const timelineReadout = document.getElementById('timelineReadout');
 const specBadge = document.getElementById('specBadge');
 
+const btnExportMp4 = document.getElementById('btnExportMp4');
+const exportProgressWrap = document.getElementById('exportProgressWrap');
+const exportProgressBar = document.getElementById('exportProgressBar');
+const exportProgressText = document.getElementById('exportProgressText');
+const exportVerifyBadge = document.getElementById('exportVerifyBadge');
+
 const tabJsonBtn = document.getElementById('tabJsonBtn');
 const tabJsBtn = document.getElementById('tabJsBtn');
+const tabBatchBtn = document.getElementById('tabBatchBtn');
+
+const codeEditorSection = document.getElementById('codeEditorSection');
+const batchSection = document.getElementById('batchSection');
+
 const codeEditor = document.getElementById('codeEditor');
 const editorStatus = document.getElementById('editorStatus');
 const btnApplyCode = document.getElementById('btnApplyCode');
 const btnSaveScene = document.getElementById('btnSaveScene');
 const btnRegeneratePlan = document.getElementById('btnRegeneratePlan');
 
-/**
- * Populate dropdowns from ES module registries
- */
+// Batch & Outputs DOM
+const batchFileInput = document.getElementById('batchFileInput');
+const btnAddBatchFiles = document.getElementById('btnAddBatchFiles');
+const btnAddSampleBatch = document.getElementById('btnAddSampleBatch');
+const btnRunBatch = document.getElementById('btnRunBatch');
+const batchQueueListEl = document.getElementById('batchQueueList');
+const outputsListEl = document.getElementById('outputsList');
+
 function initDropdowns() {
   selModel.innerHTML = INHOUSE_MODELS.map(
     (m) => `<option value="${m.id}">${m.name}</option>`
@@ -98,33 +120,28 @@ function updateDescriptions() {
   if (presetDescEl && preset) presetDescEl.textContent = preset.description;
 }
 
-/**
- * Load an image URL or DataURL and run pixel analysis + resolution check
- */
-async function loadSourceImage(src, displayName = 'image') {
+function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      state.imgElement = img;
-      state.imageSrc = src;
-      state.imageName = displayName;
-      imageFileNameEl.textContent = displayName;
-
-      updateResolutionCheck();
-      rebuildScenePlanFromModel();
-      resolve(img);
-    };
-    img.onerror = (err) => {
-      reject(err);
-    };
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
     img.src = src;
   });
 }
 
-/**
- * Validate image resolution against minimum 1080p output frame
- */
+async function loadSourceImage(src, displayName = 'image') {
+  const img = await loadImageElement(src);
+  state.imgElement = img;
+  state.imageSrc = src;
+  state.imageName = displayName;
+  imageFileNameEl.textContent = displayName;
+
+  updateResolutionCheck();
+  rebuildScenePlanFromModel();
+  return img;
+}
+
 function updateResolutionCheck() {
   if (!state.imgElement) return;
   const check = checkImageResolution(
@@ -144,20 +161,17 @@ function updateResolutionCheck() {
   }
 }
 
-/**
- * Update preview container display aspect ratio while keeping internal canvas at true 1080p/1440p
- */
 function updateStageDisplayGeometry() {
   const { width, height } = getResolutionDims(state.aspectRatio, state.resolution);
   stageCanvas.width = width;
   stageCanvas.height = height;
 
   if (state.aspectRatio === '9:16') {
-    stageViewport.style.width = '330px';
-    stageViewport.style.height = '586px';
+    stageViewport.style.width = '324px';
+    stageViewport.style.height = '576px';
   } else {
-    stageViewport.style.width = '640px';
-    stageViewport.style.height = '360px';
+    stageViewport.style.width = '608px';
+    stageViewport.style.height = '342px';
   }
 
   const totalFrames = Math.round(state.duration * FIXED_FPS);
@@ -167,11 +181,9 @@ function updateStageDisplayGeometry() {
   }
 
   specBadge.textContent = `${width}×${height} (${state.resolution}) • ${FIXED_FPS} FPS CFR • ${totalFrames} Frames`;
+  btnExportMp4.textContent = `🎬 Export ${state.resolution} ${FIXED_FPS}FPS .MP4 (${state.duration}s)`;
 }
 
-/**
- * Recompute Scene Plan using the active In-House Model & Preset
- */
 function rebuildScenePlanFromModel() {
   state.scenePlan = buildScenePlan({
     img: state.imgElement,
@@ -188,24 +200,18 @@ function rebuildScenePlanFromModel() {
   renderCurrentFrame();
 }
 
-/**
- * Sync right-hand Code Editor with active tab ('json' or 'js')
- */
 function syncEditorContent() {
   if (state.editorTab === 'json') {
     codeEditor.value = JSON.stringify(state.scenePlan, null, 2);
     editorStatus.textContent = 'Scene Plan JSON (Editable — auto-applies on edit)';
     editorStatus.style.color = '#94a3b8';
-  } else {
+  } else if (state.editorTab === 'js') {
     codeEditor.value = state.customCodeSource;
     editorStatus.textContent = 'Custom Canvas 2D Layer (JavaScript function body)';
     editorStatus.style.color = '#94a3b8';
   }
 }
 
-/**
- * Parse edits from the live editor and apply them to the renderer
- */
 function applyEditorChanges() {
   if (state.editorTab === 'json') {
     try {
@@ -226,7 +232,7 @@ function applyEditorChanges() {
       editorStatus.textContent = `⚠️ JSON Syntax Error: ${err.message}`;
       editorStatus.style.color = '#f87171';
     }
-  } else {
+  } else if (state.editorTab === 'js') {
     state.customCodeSource = codeEditor.value;
     try {
       const trimmed = state.customCodeSource.replace(/\/\/.*$/gm, '').trim();
@@ -245,9 +251,6 @@ function applyEditorChanges() {
   }
 }
 
-/**
- * Render exact frame `state.currentFrame` at `t = currentFrame / 30`
- */
 function renderCurrentFrame() {
   const totalFrames = Math.round(state.duration * FIXED_FPS);
   const clampedFrame = ((state.currentFrame % totalFrames) + totalFrames) % totalFrames;
@@ -272,12 +275,9 @@ function renderCurrentFrame() {
   timelineReadout.textContent = `Frame ${padFrame} / ${padTotal} • ${t.toFixed(2)}s / ${state.duration.toFixed(1)}s • ${FIXED_FPS} FPS`;
 }
 
-/**
- * 30 FPS Constant Frame Rate playback loop
- */
 function animationLoop(now) {
   const frameIntervalMs = 1000 / FIXED_FPS;
-  if (state.isPlaying) {
+  if (state.isPlaying && !state.isExporting) {
     if (!state.lastTickTime) state.lastTickTime = now;
     const elapsed = now - state.lastTickTime;
     if (elapsed >= frameIntervalMs) {
@@ -292,8 +292,259 @@ function animationLoop(now) {
 }
 
 /**
- * Save current scene plan / custom code to media/generated-code/
+ * Export Single Clip to True 1080p+ / 30.000 FPS H.264 MP4 & Save to media/outputs/
  */
+async function handleExportSingleClip() {
+  if (state.isExporting || !state.imgElement) return;
+  state.isExporting = true;
+  btnExportMp4.disabled = true;
+  exportProgressWrap.style.display = 'flex';
+  exportVerifyBadge.style.display = 'none';
+
+  try {
+    const result = await exportClipToMp4({
+      img: state.imgElement,
+      duration: state.duration,
+      aspectRatio: state.aspectRatio,
+      resolution: state.resolution,
+      presetId: state.presetId,
+      factTitle: state.factTitle,
+      factSubtitle: state.factSubtitle,
+      scenePlan: state.scenePlan,
+      customDrawFn: state.customDrawFn,
+      mirrorCtx: stageCtx,
+      onProgress: ({ frame, totalFrames, percent, phase }) => {
+        exportProgressBar.style.width = `${percent}%`;
+        exportProgressText.textContent =
+          phase === 'muxing'
+            ? `Muxing FastStart H.264 MP4 (${totalFrames} frames @ ${FIXED_FPS} FPS)...`
+            : `Rendering & Encoding Frame ${String(frame).padStart(3, '0')} / ${totalFrames} (${percent}%) • ${FIXED_FPS} FPS CFR`;
+      }
+    });
+
+    const cleanStem = state.imageName
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]/g, '-');
+    const outName = `${cleanStem}-${state.presetId}-${state.aspectRatio.replace(':', 'x')}-${state.resolution}-30fps.${result.ext}`;
+
+    // 1. Save directly to media/outputs/ on disk
+    const saved = await saveVideoToOutputs(result.bytes, outName);
+
+    // 2. Trigger browser download
+    const url = URL.createObjectURL(result.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = saved.fileName || outName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    // 3. Show verified MP4 spec badge
+    const v = result.verification;
+    const kb = (v.byteLength / 1024).toFixed(1);
+    exportVerifyBadge.style.display = 'block';
+    exportVerifyBadge.className = 'res-banner ok';
+    exportVerifyBadge.innerHTML =
+      `✓ <strong>Verified ${v.codec} .${result.ext.toUpperCase()}</strong> • ` +
+      `${v.width}×${v.height} • <strong>${v.fps}.000 FPS CFR</strong> • ` +
+      `${v.frameCount} Frames (${v.durationSec}s) • ${kb} KB • ` +
+      `Saved to <a href="${saved.url}" target="_blank" style="color:#6ee7b7;text-decoration:underline;">media/outputs/${saved.fileName}</a>`;
+
+    await refreshOutputsList();
+  } catch (err) {
+    exportVerifyBadge.style.display = 'block';
+    exportVerifyBadge.className = 'res-banner warn';
+    exportVerifyBadge.textContent = `⚠️ Export failed: ${err.message}`;
+  } finally {
+    state.isExporting = false;
+    btnExportMp4.disabled = false;
+    setTimeout(() => {
+      exportProgressWrap.style.display = 'none';
+    }, 1200);
+  }
+}
+
+/**
+ * Batch Mode Management (12–20 Clips for a Full Short)
+ */
+function addItemToBatchQueue({ name, src, presetId, duration, factTitle, factSubtitle }) {
+  const idx = state.batchQueue.length;
+  const autoPreset =
+    presetId || FACT_PRESETS[idx % FACT_PRESETS.length].id;
+  state.batchQueue.push({
+    id: `batch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    src,
+    presetId: autoPreset,
+    duration: duration || state.duration,
+    factTitle: factTitle ?? `FACT #${idx + 1}`,
+    factSubtitle: factSubtitle ?? '',
+    status: 'queued',
+    outputUrl: null
+  });
+  renderBatchQueueUI();
+}
+
+function renderBatchQueueUI() {
+  if (state.batchQueue.length === 0) {
+    batchQueueListEl.innerHTML = `<div class="hint" style="padding:14px;text-align:center;">No clips in batch queue yet. Add multiple images or click "Load 2 Sample Clips" above.</div>`;
+    return;
+  }
+
+  batchQueueListEl.innerHTML = state.batchQueue
+    .map((item, i) => {
+      const presetOptions = FACT_PRESETS.map(
+        (p) =>
+          `<option value="${p.id}" ${p.id === item.presetId ? 'selected' : ''}>${p.icon} ${p.name}</option>`
+      ).join('');
+      const badgeColor =
+        item.status === 'done'
+          ? '#34d399'
+          : item.status === 'rendering'
+          ? '#fcd34d'
+          : '#94a3b8';
+
+      return `
+      <div class="batch-item" data-id="${item.id}">
+        <div class="batch-item-top">
+          <strong>#${i + 1} • ${item.name}</strong>
+          <span style="font-size:0.74rem;color:${badgeColor};font-weight:700;">
+            ${item.status.toUpperCase()}
+            ${item.outputUrl ? ` — <a href="${item.outputUrl}" target="_blank" style="color:#34d399;">Download MP4</a>` : ''}
+          </span>
+        </div>
+        <div class="batch-item-controls">
+          <select class="batch-preset-sel" data-index="${i}">${presetOptions}</select>
+          <select class="batch-dur-sel" data-index="${i}">
+            <option value="3" ${item.duration === 3 ? 'selected' : ''}>3s (90f)</option>
+            <option value="4" ${item.duration === 4 ? 'selected' : ''}>4s (120f)</option>
+            <option value="5" ${item.duration === 5 ? 'selected' : ''}>5s (150f)</option>
+          </select>
+          <button class="btn btn-secondary batch-remove-btn" data-index="${i}" style="padding:5px 9px;font-size:0.74rem;">✕</button>
+        </div>
+        <input type="text" class="batch-title-inp" data-index="${i}" value="${item.factTitle.replace(/"/g, '&quot;')}" placeholder="Clip Headline (optional)" />
+      </div>`;
+    })
+    .join('');
+
+  batchQueueListEl.querySelectorAll('.batch-preset-sel').forEach((el) => {
+    el.addEventListener('change', () => {
+      const idx = Number(el.dataset.index);
+      state.batchQueue[idx].presetId = el.value;
+    });
+  });
+
+  batchQueueListEl.querySelectorAll('.batch-dur-sel').forEach((el) => {
+    el.addEventListener('change', () => {
+      const idx = Number(el.dataset.index);
+      state.batchQueue[idx].duration = Number(el.value);
+    });
+  });
+
+  batchQueueListEl.querySelectorAll('.batch-title-inp').forEach((el) => {
+    el.addEventListener('input', () => {
+      const idx = Number(el.dataset.index);
+      state.batchQueue[idx].factTitle = el.value;
+    });
+  });
+
+  batchQueueListEl.querySelectorAll('.batch-remove-btn').forEach((el) => {
+    el.addEventListener('click', () => {
+      const idx = Number(el.dataset.index);
+      state.batchQueue.splice(idx, 1);
+      renderBatchQueueUI();
+    });
+  });
+}
+
+async function runBatchExport() {
+  if (state.isExporting || state.batchQueue.length === 0) return;
+  state.isExporting = true;
+  btnRunBatch.disabled = true;
+  btnExportMp4.disabled = true;
+  exportProgressWrap.style.display = 'flex';
+
+  try {
+    for (let i = 0; i < state.batchQueue.length; i++) {
+      const item = state.batchQueue[i];
+      item.status = 'rendering';
+      renderBatchQueueUI();
+
+      const img = await loadImageElement(item.src);
+      const plan = buildScenePlan({
+        img,
+        modelId: state.modelId,
+        presetId: item.presetId,
+        aspectRatio: state.aspectRatio,
+        resolution: state.resolution,
+        duration: item.duration,
+        factTitle: item.factTitle,
+        factSubtitle: item.factSubtitle
+      });
+
+      const res = await exportClipToMp4({
+        img,
+        duration: item.duration,
+        aspectRatio: state.aspectRatio,
+        resolution: state.resolution,
+        presetId: item.presetId,
+        factTitle: item.factTitle,
+        factSubtitle: item.factSubtitle,
+        scenePlan: plan,
+        customDrawFn: state.customDrawFn,
+        mirrorCtx: stageCtx,
+        onProgress: ({ frame, totalFrames, percent }) => {
+          exportProgressBar.style.width = `${percent}%`;
+          exportProgressText.textContent = `Batch Clip ${i + 1}/${state.batchQueue.length}: Frame ${frame}/${totalFrames} (${percent}%)`;
+        }
+      });
+
+      const stem = item.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-');
+      const fileName = `batch-${String(i + 1).padStart(2, '0')}-${stem}-${item.presetId}-${state.resolution}-30fps.${res.ext}`;
+      const saved = await saveVideoToOutputs(res.bytes, fileName);
+
+      item.status = 'done';
+      item.outputUrl = saved.url;
+      renderBatchQueueUI();
+    }
+
+    await refreshOutputsList();
+  } finally {
+    state.isExporting = false;
+    btnRunBatch.disabled = false;
+    btnExportMp4.disabled = false;
+    setTimeout(() => {
+      exportProgressWrap.style.display = 'none';
+    }, 1200);
+  }
+}
+
+async function refreshOutputsList() {
+  try {
+    const res = await fetch('/api/media');
+    const data = await res.json();
+    state.outputsList = data.outputs || [];
+
+    if (state.outputsList.length === 0) {
+      outputsListEl.innerHTML = `<div class="hint">No rendered MP4 clips in media/outputs/ yet.</div>`;
+      return;
+    }
+
+    outputsListEl.innerHTML = state.outputsList
+      .slice(0, 8)
+      .map((f) => {
+        const kb = (f.sizeBytes / 1024).toFixed(1);
+        return `
+        <div class="output-row">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;" title="${f.name}">🎬 ${f.name}</span>
+          <span>${kb} KB • <a href="${f.url}" download="${f.name}" style="color:#818cf8;">Download</a></span>
+        </div>`;
+      })
+      .join('');
+  } catch (_) {
+    // Ignore fetch error
+  }
+}
+
 async function saveSceneToDisk() {
   try {
     const baseName = state.imageName.replace(/\.[^.]+$/, '');
@@ -324,11 +575,24 @@ async function saveSceneToDisk() {
   }
 }
 
-/**
- * Bind UI Event Listeners
- */
+function switchRightTab(tab) {
+  state.editorTab = tab;
+  tabJsonBtn.classList.toggle('active', tab === 'json');
+  tabJsBtn.classList.toggle('active', tab === 'js');
+  tabBatchBtn.classList.toggle('active', tab === 'batch');
+
+  if (tab === 'batch') {
+    codeEditorSection.style.display = 'none';
+    batchSection.style.display = 'flex';
+    renderBatchQueueUI();
+  } else {
+    codeEditorSection.style.display = 'flex';
+    batchSection.style.display = 'none';
+    syncEditorContent();
+  }
+}
+
 function bindEvents() {
-  // File upload via click or drag-and-drop
   dropzone.addEventListener('click', () => fileInput.click());
   dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -338,8 +602,13 @@ function bindEvents() {
   dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropzone.classList.remove('dragover');
-    const file = e.dataTransfer?.files?.[0];
-    if (file) handleUploadedFile(file);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length === 1) {
+      handleUploadedFile(files[0]);
+    } else if (files.length > 1) {
+      handleMultipleBatchFiles(files);
+      switchRightTab('batch');
+    }
   });
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files?.[0];
@@ -423,34 +692,47 @@ function bindEvents() {
     renderCurrentFrame();
   });
 
-  tabJsonBtn.addEventListener('click', () => {
-    state.editorTab = 'json';
-    tabJsonBtn.classList.add('active');
-    tabJsBtn.classList.remove('active');
-    syncEditorContent();
+  btnExportMp4.addEventListener('click', () => {
+    handleExportSingleClip();
   });
 
-  tabJsBtn.addEventListener('click', () => {
-    state.editorTab = 'js';
-    tabJsBtn.classList.add('active');
-    tabJsonBtn.classList.remove('active');
-    syncEditorContent();
+  tabJsonBtn.addEventListener('click', () => switchRightTab('json'));
+  tabJsBtn.addEventListener('click', () => switchRightTab('js'));
+  tabBatchBtn.addEventListener('click', () => switchRightTab('batch'));
+
+  codeEditor.addEventListener('input', () => applyEditorChanges());
+  btnApplyCode.addEventListener('click', () => applyEditorChanges());
+  btnSaveScene.addEventListener('click', () => saveSceneToDisk());
+  btnRegeneratePlan.addEventListener('click', () => rebuildScenePlanFromModel());
+
+  // Batch Mode Controls
+  btnAddBatchFiles.addEventListener('click', () => batchFileInput.click());
+  batchFileInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) handleMultipleBatchFiles(files);
   });
 
-  codeEditor.addEventListener('input', () => {
-    applyEditorChanges();
+  btnAddSampleBatch.addEventListener('click', () => {
+    addItemToBatchQueue({
+      name: 'sample-ancient-pyramid.svg',
+      src: '/media/samples/sample-ancient-pyramid.svg',
+      presetId: 'documentary-kenburns',
+      duration: 3,
+      factTitle: 'FACT #1: PYRAMID ALIGNMENT',
+      factSubtitle: 'Aligned to true north within 3/60th of a degree.'
+    });
+    addItemToBatchQueue({
+      name: 'sample-space-nebula.svg',
+      src: '/media/samples/sample-space-nebula.svg',
+      presetId: '3d-perspective-tilt',
+      duration: 3,
+      factTitle: 'FACT #2: STELLAR NURSERIES',
+      factSubtitle: 'Nebulae span light-years where new stars ignite.'
+    });
   });
 
-  btnApplyCode.addEventListener('click', () => {
-    applyEditorChanges();
-  });
-
-  btnSaveScene.addEventListener('click', () => {
-    saveSceneToDisk();
-  });
-
-  btnRegeneratePlan.addEventListener('click', () => {
-    rebuildScenePlanFromModel();
+  btnRunBatch.addEventListener('click', () => {
+    runBatchExport();
   });
 }
 
@@ -462,10 +744,25 @@ function handleUploadedFile(file) {
   reader.readAsDataURL(file);
 }
 
+function handleMultipleBatchFiles(files) {
+  files.forEach((file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      addItemToBatchQueue({
+        name: file.name,
+        src: ev.target.result,
+        duration: state.duration
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Initialize Studio
 initDropdowns();
 updateStageDisplayGeometry();
 bindEvents();
+refreshOutputsList();
 loadSourceImage(state.imageSrc, state.imageName).then(() => {
   requestAnimationFrame(animationLoop);
 });

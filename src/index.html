@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Image-to-Video Studio • 1080p / 30 FPS Fact Shorts</title>
+  <title>AI Image-to-Video Studio • 1080p / 30 FPS Fact Shorts MP4</title>
   <style>
     :root {
       --bg: #080a0f;
@@ -12,6 +12,8 @@
       --border: #1f2737;
       --accent: #6366f1;
       --accent-hover: #4f46e5;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
       --text: #f8fafc;
       --text-muted: #94a3b8;
       --ok: #10b981;
@@ -57,10 +59,10 @@
     .main-layout {
       flex: 1;
       display: grid;
-      grid-template-columns: 390px 1fr 440px;
+      grid-template-columns: 380px 1fr 450px;
       gap: 18px;
-      padding: 20px;
-      max-width: 1760px;
+      padding: 18px 22px;
+      max-width: 1780px;
       margin: 0 auto;
       width: 100%;
     }
@@ -72,10 +74,10 @@
       padding: 18px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 13px;
     }
     .panel-title {
-      font-size: 0.96rem;
+      font-size: 0.95rem;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -84,21 +86,21 @@
 
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     label {
-      font-size: 0.74rem;
+      font-size: 0.73rem;
       text-transform: uppercase;
       font-weight: 700;
       color: var(--text-muted);
       letter-spacing: 0.5px;
     }
-    .hint { font-size: 0.76rem; color: var(--text-muted); line-height: 1.35; }
+    .hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.35; }
 
     select, input[type="text"], textarea {
       background: var(--panel-alt);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 9px 11px;
+      padding: 8px 11px;
       border-radius: 8px;
-      font-size: 0.86rem;
+      font-size: 0.85rem;
       outline: none;
       width: 100%;
     }
@@ -112,7 +114,7 @@
       border-radius: 8px;
       text-align: center;
       cursor: pointer;
-      font-size: 0.84rem;
+      font-size: 0.83rem;
       user-select: none;
       transition: all 0.15s;
     }
@@ -126,7 +128,7 @@
     .dropzone {
       border: 1.5px dashed #334155;
       border-radius: 10px;
-      padding: 16px;
+      padding: 14px;
       text-align: center;
       cursor: pointer;
       background: var(--panel-alt);
@@ -137,14 +139,14 @@
       background: rgba(99, 102, 241, 0.08);
     }
     .dropzone input { display: none; }
-    .dropzone p { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
+    .dropzone p { font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
 
     .res-banner {
       display: none;
-      font-size: 0.76rem;
+      font-size: 0.75rem;
       padding: 8px 10px;
       border-radius: 7px;
-      line-height: 1.35;
+      line-height: 1.4;
     }
     .res-banner.ok {
       background: rgba(16, 185, 129, 0.12);
@@ -164,7 +166,7 @@
       align-items: center;
       justify-content: space-between;
       background: #07090e;
-      padding: 20px;
+      padding: 18px;
     }
     .stage-viewport {
       position: relative;
@@ -201,12 +203,18 @@
       cursor: pointer;
     }
     .timeline-readout {
-      font-size: 0.78rem;
+      font-size: 0.77rem;
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
       text-align: right;
     }
 
+    .export-box {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .btn {
       background: var(--accent);
       color: #fff;
@@ -216,9 +224,17 @@
       font-weight: 600;
       font-size: 0.85rem;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: background 0.15s, opacity 0.15s;
     }
     .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-export {
+      background: var(--danger);
+      padding: 12px 18px;
+      font-size: 0.92rem;
+      width: 100%;
+    }
+    .btn-export:hover { background: var(--danger-hover); }
     .btn-secondary {
       background: #1e293b;
       border: 1px solid #334155;
@@ -226,15 +242,38 @@
     }
     .btn-secondary:hover { background: #334155; }
 
-    /* Editor Column */
-    .tab-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      background: #0d121d;
+      border: 1px solid var(--border);
+      padding: 9px 12px;
+      border-radius: 8px;
+    }
+    .progress-track {
+      width: 100%;
+      height: 7px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #6366f1, #ec4899);
+      transition: width 0.08s linear;
+    }
+
+    /* Right Column Tabs */
+    .tab-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
     .tab-btn {
-      padding: 8px 10px;
+      padding: 8px 8px;
       border-radius: 7px;
       border: 1px solid var(--border);
       background: var(--panel-alt);
       color: var(--text-muted);
-      font-size: 0.8rem;
+      font-size: 0.77rem;
       font-weight: 600;
       cursor: pointer;
     }
@@ -243,24 +282,85 @@
       border-color: var(--accent);
       color: #fff;
     }
+
+    #codeEditorSection {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
     #codeEditor {
       flex: 1;
-      min-height: 410px;
+      min-height: 310px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.77rem;
+      font-size: 0.76rem;
       line-height: 1.45;
       color: #7dd3fc;
       background: #06080d;
       resize: vertical;
     }
     .editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* Batch Queue */
+    #batchSection {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+    .batch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 320px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .batch-item {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .batch-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.78rem;
+    }
+    .batch-item-controls {
+      display: grid;
+      grid-template-columns: 1fr 90px auto;
+      gap: 6px;
+    }
+
+    .outputs-box {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .output-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      background: var(--panel-alt);
+      padding: 6px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <h1>🎬 AI Image-to-Video Studio</h1>
-      <span class="pill">100% In-House • Keyless • 1080p Min • 30 FPS</span>
+      <span class="pill">100% In-House • Keyless • 1080p Min • 30.000 FPS CFR MP4</span>
     </div>
     <div class="header-right">
       <span class="spec-badge" id="specBadge">1080×1920 (1080p) • 30 FPS CFR • 120 Frames</span>
@@ -276,11 +376,11 @@
       </div>
 
       <div class="form-group">
-        <label>1. Source Image (Upload or Built-in Sample)</label>
+        <label>1. Source Image (Drop 1 or Multiple for Batch)</label>
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept="image/*" />
-          <div style="font-size: 1.4rem;">🖼️</div>
-          <strong style="font-size: 0.85rem;">Click or Drag Image Here</strong>
+          <div style="font-size: 1.35rem;">🖼️</div>
+          <strong style="font-size: 0.84rem;">Click or Drag Image(s) Here</strong>
           <p id="imageFileName">sample-ancient-pyramid.svg</p>
         </div>
         <select id="selSample" title="Switch built-in sample image">
@@ -324,52 +424,96 @@
       <div class="form-group">
         <label>5. Fact Caption Overlay (Auto Word-Wrapped Safe Zone)</label>
         <input type="text" id="factTitle" value="DID YOU KNOW?" placeholder="Fact Headline (e.g. DID YOU KNOW?)" />
-        <textarea id="factSubtitle" rows="2" placeholder="Fact details (automatically wraps to stay inside safe margins)...">The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.</textarea>
+        <textarea id="factSubtitle" rows="2" placeholder="Fact details (automatically wraps inside safe margins)...">The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.</textarea>
       </div>
 
-      <button class="btn" id="btnRegeneratePlan">🔄 Re-Analyze Image & Reset Plan</button>
+      <button class="btn btn-secondary" id="btnRegeneratePlan">🔄 Re-Analyze Image & Reset Plan</button>
     </section>
 
-    <!-- Center Column: Unified 1080p / 30 FPS Canvas Stage -->
+    <!-- Center Column: Unified 1080p / 30 FPS Canvas Stage & True MP4 Export -->
     <section class="panel stage-panel">
       <div style="width: 100%; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.85rem; font-weight: 600; color: #cbd5e1;">🎯 Unified 1080p+ Canvas Stage (Cover-Fit)</span>
-        <span style="font-size: 0.75rem; color: var(--text-muted);">Part 1 Foundation • Frame-Deterministic</span>
+        <span style="font-size: 0.85rem; font-weight: 600; color: #cbd5e1;">🎯 Unified 1080p+ Stage (Preview === Export)</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">WebCodecs H.264 • 30.000 FPS CFR</span>
       </div>
 
-      <div class="stage-viewport" id="stageViewport" style="width: 330px; height: 586px;">
+      <div class="stage-viewport" id="stageViewport" style="width: 324px; height: 576px;">
         <canvas id="stageCanvas" width="1080" height="1920"></canvas>
       </div>
 
       <div class="timeline-bar">
         <div class="timeline-controls">
-          <button class="btn btn-secondary" id="btnPlayPause" style="padding: 7px 12px; font-size: 0.8rem;">⏸ Pause</button>
+          <button class="btn btn-secondary" id="btnPlayPause" style="padding: 6px 12px; font-size: 0.78rem;">⏸ Pause</button>
           <input type="range" id="frameScrubber" min="0" max="119" value="0" step="1" />
         </div>
         <div class="timeline-readout" id="timelineReadout">Frame 001 / 120 • 0.00s / 4.0s • 30 FPS</div>
       </div>
+
+      <div class="export-box">
+        <button class="btn btn-export" id="btnExportMp4">
+          🎬 Export 1080p 30FPS .MP4 (4s)
+        </button>
+
+        <div class="progress-wrap" id="exportProgressWrap">
+          <div class="progress-track">
+            <div class="progress-fill" id="exportProgressBar"></div>
+          </div>
+          <div class="hint" id="exportProgressText" style="color: #e2e8f0;">Encoding...</div>
+        </div>
+
+        <div id="exportVerifyBadge" class="res-banner ok"></div>
+      </div>
     </section>
 
-    <!-- Right Column: Live Editable Scene Plan & Custom Code -->
+    <!-- Right Column: Live Scene Editor + Batch Mode + Rendered Outputs -->
     <section class="panel">
       <div class="panel-title">
-        <span>💻 Live Scene Plan & Code Editor</span>
+        <span>💻 Scene Code & Batch Studio</span>
       </div>
-      <p class="hint">
-        Edit the generated Scene Plan JSON or write custom Canvas 2D JavaScript. Changes apply immediately to the 30 FPS stage. Compatible with Antigravity, Claude Desktop, and Codex.
-      </p>
 
       <div class="tab-bar">
-        <button class="tab-btn active" id="tabJsonBtn">{ } Scene Plan JSON</button>
-        <button class="tab-btn" id="tabJsBtn">⚡ Custom Canvas JS</button>
+        <button class="tab-btn active" id="tabJsonBtn">{ } Scene Plan</button>
+        <button class="tab-btn" id="tabJsBtn">⚡ Custom JS</button>
+        <button class="tab-btn" id="tabBatchBtn">📦 Batch (12–20)</button>
       </div>
 
-      <textarea id="codeEditor" spellcheck="false"></textarea>
-      <div class="hint" id="editorStatus">Scene Plan JSON (Editable — auto-applies on edit)</div>
+      <!-- Tab 1 & 2: JSON / JS Live Editor -->
+      <div id="codeEditorSection">
+        <p class="hint">
+          Edit the Scene Plan JSON or custom Canvas 2D JavaScript. Every edit renders live at 30 FPS and exports into the final MP4.
+        </p>
+        <textarea id="codeEditor" spellcheck="false"></textarea>
+        <div class="hint" id="editorStatus">Scene Plan JSON (Editable — auto-applies on edit)</div>
+        <div class="editor-actions">
+          <button class="btn btn-secondary" id="btnApplyCode">✓ Apply Edits</button>
+          <button class="btn" id="btnSaveScene">💾 Save Scene Plan</button>
+        </div>
+      </div>
 
-      <div class="editor-actions">
-        <button class="btn btn-secondary" id="btnApplyCode">✓ Apply Edits</button>
-        <button class="btn" id="btnSaveScene">💾 Save to generated-code/</button>
+      <!-- Tab 3: Batch Mode for Fact Shorts -->
+      <div id="batchSection">
+        <p class="hint">
+          Queue 12–20 images for a full 60-second Fact Short. Each clip renders at 1080p+ / 30.000 FPS H.264 MP4 into <code>media/outputs/</code>.
+        </p>
+        <input type="file" id="batchFileInput" accept="image/*" multiple style="display:none;" />
+        <div class="editor-actions">
+          <button class="btn btn-secondary" id="btnAddBatchFiles">➕ Upload Images</button>
+          <button class="btn btn-secondary" id="btnAddSampleBatch">✨ Load 2 Sample Clips</button>
+        </div>
+
+        <div class="batch-list" id="batchQueueList"></div>
+
+        <button class="btn btn-export" id="btnRunBatch">
+          🚀 Render Entire Batch (1080p • 30 FPS MP4)
+        </button>
+      </div>
+
+      <!-- Saved Outputs in media/outputs/ -->
+      <div class="outputs-box">
+        <label>📂 Rendered MP4 Clips (media/outputs/)</label>
+        <div id="outputsList">
+          <div class="hint">No rendered MP4 clips in media/outputs/ yet.</div>
+        </div>
       </div>
     </section>
   </main>

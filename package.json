@@ -1,7 +1,8 @@
 {
   "name": "ai-image-to-video",
-  "version": "1.1.0",
-  "description": "In-House AI Image-to-Video Studio for Fact Shorts (1080p minimum, locked 30 FPS, 3-5s clips, zero API keys, compatible with Antigravity, Claude Desktop, and Codex)",
+  "version": "1.2.0",
+  "type": "module",
+  "description": "In-House AI Image-to-Video Studio for Fact Shorts (1080p minimum, locked 30 FPS CFR MP4, 3-5s clips, Batch Mode, zero API keys, compatible with Antigravity, Claude Desktop, and Codex)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -16,7 +17,7 @@
     "fact-shorts",
     "1080p",
     "30fps",
-    "canvas",
+    "mp4",
     "webcodecs"
   ],
   "author": "aj <abhishekjaiswal124@gmail.com>",
