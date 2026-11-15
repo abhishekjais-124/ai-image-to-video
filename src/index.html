@@ -59,7 +59,7 @@
     .main-layout {
       flex: 1;
       display: grid;
-      grid-template-columns: 380px 1fr 450px;
+      grid-template-columns: 390px 1fr 450px;
       gap: 18px;
       padding: 18px 22px;
       max-width: 1780px;
@@ -71,10 +71,10 @@
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 18px;
+      padding: 17px;
       display: flex;
       flex-direction: column;
-      gap: 13px;
+      gap: 11px;
     }
     .panel-title {
       font-size: 0.95rem;
@@ -84,23 +84,23 @@
       justify-content: space-between;
     }
 
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
     label {
-      font-size: 0.73rem;
+      font-size: 0.72rem;
       text-transform: uppercase;
       font-weight: 700;
       color: var(--text-muted);
       letter-spacing: 0.5px;
     }
-    .hint { font-size: 0.75rem; color: var(--text-muted); line-height: 1.35; }
+    .hint { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
 
     select, input[type="text"], textarea {
       background: var(--panel-alt);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 11px;
+      padding: 8px 10px;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 0.84rem;
       outline: none;
       width: 100%;
     }
@@ -110,11 +110,11 @@
     .radio-btn {
       border: 1px solid var(--border);
       background: var(--panel-alt);
-      padding: 9px 10px;
+      padding: 8px 10px;
       border-radius: 8px;
       text-align: center;
       cursor: pointer;
-      font-size: 0.83rem;
+      font-size: 0.82rem;
       user-select: none;
       transition: all 0.15s;
     }
@@ -128,7 +128,7 @@
     .dropzone {
       border: 1.5px dashed #334155;
       border-radius: 10px;
-      padding: 14px;
+      padding: 12px;
       text-align: center;
       cursor: pointer;
       background: var(--panel-alt);
@@ -139,14 +139,14 @@
       background: rgba(99, 102, 241, 0.08);
     }
     .dropzone input { display: none; }
-    .dropzone p { font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; word-break: break-all; }
+    .dropzone p { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; word-break: break-all; }
 
     .res-banner {
       display: none;
-      font-size: 0.75rem;
-      padding: 8px 10px;
+      font-size: 0.74rem;
+      padding: 7px 9px;
       border-radius: 7px;
-      line-height: 1.4;
+      line-height: 1.35;
     }
     .res-banner.ok {
       background: rgba(16, 185, 129, 0.12);
@@ -187,10 +187,10 @@
       background: #0d111a;
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 12px 14px;
+      padding: 11px 14px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 9px;
     }
     .timeline-controls {
       display: flex;
@@ -203,7 +203,7 @@
       cursor: pointer;
     }
     .timeline-readout {
-      font-size: 0.77rem;
+      font-size: 0.76rem;
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
       text-align: right;
@@ -219,10 +219,10 @@
       background: var(--accent);
       color: #fff;
       border: none;
-      padding: 10px 14px;
+      padding: 9px 13px;
       border-radius: 8px;
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 0.83rem;
       cursor: pointer;
       transition: background 0.15s, opacity 0.15s;
     }
@@ -231,7 +231,7 @@
     .btn-export {
       background: var(--danger);
       padding: 12px 18px;
-      font-size: 0.92rem;
+      font-size: 0.91rem;
       width: 100%;
     }
     .btn-export:hover { background: var(--danger-hover); }
@@ -286,14 +286,14 @@
     #codeEditorSection {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 9px;
       flex: 1;
     }
     #codeEditor {
       flex: 1;
-      min-height: 310px;
+      min-height: 280px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.76rem;
+      font-size: 0.75rem;
       line-height: 1.45;
       color: #7dd3fc;
       background: #06080d;
@@ -305,14 +305,14 @@
     #batchSection {
       display: none;
       flex-direction: column;
-      gap: 10px;
+      gap: 9px;
       flex: 1;
     }
     .batch-list {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-height: 320px;
+      max-height: 300px;
       overflow-y: auto;
       padding-right: 4px;
     }
@@ -379,8 +379,8 @@
         <label>1. Source Image (Drop 1 or Multiple for Batch)</label>
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept="image/*" />
-          <div style="font-size: 1.35rem;">🖼️</div>
-          <strong style="font-size: 0.84rem;">Click or Drag Image(s) Here</strong>
+          <div style="font-size: 1.25rem;">🖼️</div>
+          <strong style="font-size: 0.82rem;">Click or Drag Image(s) Here</strong>
           <p id="imageFileName">sample-ancient-pyramid.svg</p>
         </div>
         <select id="selSample" title="Switch built-in sample image">
@@ -391,14 +391,15 @@
       </div>
 
       <div class="form-group">
-        <label>2. In-House Model Selection (No API Key)</label>
+        <label>2. In-House Model Selection (Output Varies by Model)</label>
         <select id="selModel"></select>
         <div class="hint" id="modelDesc"></div>
       </div>
 
       <div class="form-group">
-        <label>3. Fact-Short Visual Preset (All 5 Active)</label>
+        <label>3. Fact-Short Visual Preset & Motion Prompt</label>
         <select id="selPreset"></select>
+        <input type="text" id="motionPrompt" placeholder="Optional prompt (e.g. 'zoom out with embers', 'rain + cyan')" />
         <div class="hint" id="presetDesc"></div>
       </div>
 
@@ -427,7 +428,10 @@
         <textarea id="factSubtitle" rows="2" placeholder="Fact details (automatically wraps inside safe margins)...">The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.</textarea>
       </div>
 
-      <button class="btn btn-secondary" id="btnRegeneratePlan">🔄 Re-Analyze Image & Reset Plan</button>
+      <div class="editor-actions">
+        <button class="btn" id="btnVariation">🎲 New Model Variation (Seed #1)</button>
+        <button class="btn btn-secondary" id="btnRegeneratePlan">🔄 Reset Plan</button>
+      </div>
     </section>
 
     <!-- Center Column: Unified 1080p / 30 FPS Canvas Stage & True MP4 Export -->
@@ -471,6 +475,10 @@
         <span>💻 Scene Code & Batch Studio</span>
       </div>
 
+      <select id="selSavedScene" title="Load a scene generated by Antigravity, Claude Desktop, Codex, or saved from UI">
+        <option value="">📂 Load Saved / Agent Scene (media/generated-code/)...</option>
+      </select>
+
       <div class="tab-bar">
         <button class="tab-btn active" id="tabJsonBtn">{ } Scene Plan</button>
         <button class="tab-btn" id="tabJsBtn">⚡ Custom JS</button>
@@ -480,10 +488,10 @@
       <!-- Tab 1 & 2: JSON / JS Live Editor -->
       <div id="codeEditorSection">
         <p class="hint">
-          Edit the Scene Plan JSON or custom Canvas 2D JavaScript. Every edit renders live at 30 FPS and exports into the final MP4.
+          Each model generates both a Scene Plan JSON and custom Canvas 2D VFX code. Edit either live — changes export directly into the MP4.
         </p>
         <textarea id="codeEditor" spellcheck="false"></textarea>
-        <div class="hint" id="editorStatus">Scene Plan JSON (Editable — auto-applies on edit)</div>
+        <div class="hint" id="editorStatus">Active Model: saliency-vision (Seed #1)</div>
         <div class="editor-actions">
           <button class="btn btn-secondary" id="btnApplyCode">✓ Apply Edits</button>
           <button class="btn" id="btnSaveScene">💾 Save Scene Plan</button>

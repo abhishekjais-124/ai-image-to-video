@@ -1,4 +1,4 @@
-// Studio UI Controller (Part 2: Frame-Accurate 1080p/30FPS H.264 MP4 Export + Batch Mode)
+// Studio UI Controller (Part 3: Multi-Model Variation System, Prompt Director, Agent Scene Loader & MP4 Export)
 
 import {
   FIXED_FPS,
@@ -23,7 +23,9 @@ const state = {
   resolution: '1080p',
   duration: 4,
   modelId: 'saliency-vision',
+  variationSeed: 1,
   presetId: 'documentary-kenburns',
+  motionPrompt: '',
   imageSrc: '/media/samples/sample-ancient-pyramid.svg',
   imageName: 'sample-ancient-pyramid.svg',
   imgElement: null,
@@ -31,9 +33,7 @@ const state = {
   factSubtitle:
     'The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.',
   scenePlan: {},
-  customCodeSource: `// Optional Custom Canvas 2D Overlay (runs at 30 FPS on every frame)
-// Available args: ctx, { t, frame, fps, duration, progress, width, height, focusX, focusY }
-`,
+  customCodeSource: '',
   customDrawFn: null,
   editorTab: 'json', // 'json' | 'js' | 'batch'
   isPlaying: true,
@@ -41,7 +41,8 @@ const state = {
   currentFrame: 0,
   lastTickTime: 0,
   batchQueue: [],
-  outputsList: []
+  outputsList: [],
+  scenesList: []
 };
 
 // DOM Elements
@@ -63,9 +64,14 @@ const selModel = document.getElementById('selModel');
 const modelDescEl = document.getElementById('modelDesc');
 const selPreset = document.getElementById('selPreset');
 const presetDescEl = document.getElementById('presetDesc');
+const motionPromptInput = document.getElementById('motionPrompt');
 
 const factTitleInput = document.getElementById('factTitle');
 const factSubtitleInput = document.getElementById('factSubtitle');
+
+const btnVariation = document.getElementById('btnVariation');
+const btnRegeneratePlan = document.getElementById('btnRegeneratePlan');
+const selSavedScene = document.getElementById('selSavedScene');
 
 const btnPlayPause = document.getElementById('btnPlayPause');
 const frameScrubber = document.getElementById('frameScrubber');
@@ -89,7 +95,6 @@ const codeEditor = document.getElementById('codeEditor');
 const editorStatus = document.getElementById('editorStatus');
 const btnApplyCode = document.getElementById('btnApplyCode');
 const btnSaveScene = document.getElementById('btnSaveScene');
-const btnRegeneratePlan = document.getElementById('btnRegeneratePlan');
 
 // Batch & Outputs DOM
 const batchFileInput = document.getElementById('batchFileInput');
@@ -120,6 +125,22 @@ function updateDescriptions() {
   if (presetDescEl && preset) presetDescEl.textContent = preset.description;
 }
 
+function compileCustomCode(codeStr) {
+  state.customCodeSource = String(codeStr || '');
+  try {
+    const trimmed = state.customCodeSource.replace(/\/\/.*$/gm, '').trim();
+    if (!trimmed) {
+      state.customDrawFn = null;
+    } else {
+      state.customDrawFn = new Function('ctx', 'params', state.customCodeSource);
+    }
+    return true;
+  } catch (_) {
+    state.customDrawFn = null;
+    return false;
+  }
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -138,7 +159,7 @@ async function loadSourceImage(src, displayName = 'image') {
   imageFileNameEl.textContent = displayName;
 
   updateResolutionCheck();
-  rebuildScenePlanFromModel();
+  rebuildScenePlanFromModel({ autoSelectPreset: false });
   return img;
 }
 
@@ -184,8 +205,8 @@ function updateStageDisplayGeometry() {
   btnExportMp4.textContent = `🎬 Export ${state.resolution} ${FIXED_FPS}FPS .MP4 (${state.duration}s)`;
 }
 
-function rebuildScenePlanFromModel() {
-  state.scenePlan = buildScenePlan({
+function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
+  const plan = buildScenePlan({
     img: state.imgElement,
     modelId: state.modelId,
     presetId: state.presetId,
@@ -193,21 +214,38 @@ function rebuildScenePlanFromModel() {
     resolution: state.resolution,
     duration: state.duration,
     factTitle: state.factTitle,
-    factSubtitle: state.factSubtitle
+    factSubtitle: state.factSubtitle,
+    motionPrompt: state.motionPrompt,
+    variationSeed: state.variationSeed,
+    autoSelectPreset
   });
 
+  state.scenePlan = plan;
+  if (plan.presetId && plan.presetId !== state.presetId) {
+    state.presetId = plan.presetId;
+    selPreset.value = state.presetId;
+    updateDescriptions();
+  }
+
+  if (plan.generatedCustomCode) {
+    compileCustomCode(plan.generatedCustomCode);
+  }
+
+  btnVariation.textContent = `🎲 New Model Variation (Seed #${state.variationSeed})`;
   syncEditorContent();
   renderCurrentFrame();
 }
 
 function syncEditorContent() {
   if (state.editorTab === 'json') {
-    codeEditor.value = JSON.stringify(state.scenePlan, null, 2);
-    editorStatus.textContent = 'Scene Plan JSON (Editable — auto-applies on edit)';
+    const cleanPlan = { ...state.scenePlan };
+    delete cleanPlan.generatedCustomCode;
+    codeEditor.value = JSON.stringify(cleanPlan, null, 2);
+    editorStatus.textContent = `Active Model: ${state.modelId} (Seed #${state.variationSeed}) — Editable JSON`;
     editorStatus.style.color = '#94a3b8';
   } else if (state.editorTab === 'js') {
     codeEditor.value = state.customCodeSource;
-    editorStatus.textContent = 'Custom Canvas 2D Layer (JavaScript function body)';
+    editorStatus.textContent = `Model-Generated Canvas 2D VFX (${state.modelId}) — Editable JS`;
     editorStatus.style.color = '#94a3b8';
   }
 }
@@ -225,6 +263,10 @@ function applyEditorChanges() {
         state.factSubtitle = parsed.factSubtitle;
         factSubtitleInput.value = parsed.factSubtitle;
       }
+      if (typeof parsed.presetId === 'string' && parsed.presetId !== state.presetId) {
+        state.presetId = parsed.presetId;
+        selPreset.value = parsed.presetId;
+      }
       editorStatus.textContent = '✓ Valid Scene Plan JSON applied live';
       editorStatus.style.color = '#34d399';
       renderCurrentFrame();
@@ -233,19 +275,13 @@ function applyEditorChanges() {
       editorStatus.style.color = '#f87171';
     }
   } else if (state.editorTab === 'js') {
-    state.customCodeSource = codeEditor.value;
-    try {
-      const trimmed = state.customCodeSource.replace(/\/\/.*$/gm, '').trim();
-      if (!trimmed) {
-        state.customDrawFn = null;
-      } else {
-        state.customDrawFn = new Function('ctx', 'params', state.customCodeSource);
-      }
+    const ok = compileCustomCode(codeEditor.value);
+    if (ok) {
       editorStatus.textContent = '✓ Custom Canvas 2D layer compiled & active';
       editorStatus.style.color = '#34d399';
       renderCurrentFrame();
-    } catch (err) {
-      editorStatus.textContent = `⚠️ JS Compile Error: ${err.message}`;
+    } else {
+      editorStatus.textContent = '⚠️ JS Syntax Error in Custom Canvas layer';
       editorStatus.style.color = '#f87171';
     }
   }
@@ -291,9 +327,6 @@ function animationLoop(now) {
   requestAnimationFrame(animationLoop);
 }
 
-/**
- * Export Single Clip to True 1080p+ / 30.000 FPS H.264 MP4 & Save to media/outputs/
- */
 async function handleExportSingleClip() {
   if (state.isExporting || !state.imgElement) return;
   state.isExporting = true;
@@ -325,12 +358,10 @@ async function handleExportSingleClip() {
     const cleanStem = state.imageName
       .replace(/\.[^.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]/g, '-');
-    const outName = `${cleanStem}-${state.presetId}-${state.aspectRatio.replace(':', 'x')}-${state.resolution}-30fps.${result.ext}`;
+    const outName = `${cleanStem}-${state.modelId}-s${state.variationSeed}-${state.aspectRatio.replace(':', 'x')}-${state.resolution}-30fps.${result.ext}`;
 
-    // 1. Save directly to media/outputs/ on disk
     const saved = await saveVideoToOutputs(result.bytes, outName);
 
-    // 2. Trigger browser download
     const url = URL.createObjectURL(result.blob);
     const a = document.createElement('a');
     a.href = url;
@@ -338,7 +369,6 @@ async function handleExportSingleClip() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 
-    // 3. Show verified MP4 spec badge
     const v = result.verification;
     const kb = (v.byteLength / 1024).toFixed(1);
     exportVerifyBadge.style.display = 'block';
@@ -349,7 +379,7 @@ async function handleExportSingleClip() {
       `${v.frameCount} Frames (${v.durationSec}s) • ${kb} KB • ` +
       `Saved to <a href="${saved.url}" target="_blank" style="color:#6ee7b7;text-decoration:underline;">media/outputs/${saved.fileName}</a>`;
 
-    await refreshOutputsList();
+    await refreshMediaLists();
   } catch (err) {
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner warn';
@@ -363,13 +393,9 @@ async function handleExportSingleClip() {
   }
 }
 
-/**
- * Batch Mode Management (12–20 Clips for a Full Short)
- */
 function addItemToBatchQueue({ name, src, presetId, duration, factTitle, factSubtitle }) {
   const idx = state.batchQueue.length;
-  const autoPreset =
-    presetId || FACT_PRESETS[idx % FACT_PRESETS.length].id;
+  const autoPreset = presetId || FACT_PRESETS[idx % FACT_PRESETS.length].id;
   state.batchQueue.push({
     id: `batch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name,
@@ -478,8 +504,19 @@ async function runBatchExport() {
         resolution: state.resolution,
         duration: item.duration,
         factTitle: item.factTitle,
-        factSubtitle: item.factSubtitle
+        factSubtitle: item.factSubtitle,
+        motionPrompt: state.motionPrompt,
+        variationSeed: i + 1
       });
+
+      let batchCustomFn = null;
+      if (plan.generatedCustomCode) {
+        try {
+          batchCustomFn = new Function('ctx', 'params', plan.generatedCustomCode);
+        } catch (_) {
+          batchCustomFn = null;
+        }
+      }
 
       const res = await exportClipToMp4({
         img,
@@ -490,7 +527,7 @@ async function runBatchExport() {
         factTitle: item.factTitle,
         factSubtitle: item.factSubtitle,
         scenePlan: plan,
-        customDrawFn: state.customDrawFn,
+        customDrawFn: batchCustomFn,
         mirrorCtx: stageCtx,
         onProgress: ({ frame, totalFrames, percent }) => {
           exportProgressBar.style.width = `${percent}%`;
@@ -507,7 +544,7 @@ async function runBatchExport() {
       renderBatchQueueUI();
     }
 
-    await refreshOutputsList();
+    await refreshMediaLists();
   } finally {
     state.isExporting = false;
     btnRunBatch.disabled = false;
@@ -518,11 +555,19 @@ async function runBatchExport() {
   }
 }
 
-async function refreshOutputsList() {
+async function refreshMediaLists() {
   try {
     const res = await fetch('/api/media');
     const data = await res.json();
     state.outputsList = data.outputs || [];
+    state.scenesList = data.scenes || [];
+
+    // Populate Saved / Agent-Generated Scenes dropdown
+    selSavedScene.innerHTML =
+      `<option value="">📂 Load Saved / Agent Scene (${state.scenesList.length} in media/generated-code/)...</option>` +
+      state.scenesList
+        .map((s) => `<option value="${s.url}">${s.name}</option>`)
+        .join('');
 
     if (state.outputsList.length === 0) {
       outputsListEl.innerHTML = `<div class="hint">No rendered MP4 clips in media/outputs/ yet.</div>`;
@@ -545,6 +590,66 @@ async function refreshOutputsList() {
   }
 }
 
+async function loadSavedSceneFromUrl(url) {
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.aspectRatio === '16:9' || data.aspectRatio === '9:16') {
+      state.aspectRatio = data.aspectRatio;
+      btnShorts.classList.toggle('active', state.aspectRatio === '9:16');
+      btnLandscape.classList.toggle('active', state.aspectRatio === '16:9');
+    }
+    if (data.resolution === '1080p' || data.resolution === '1440p') {
+      state.resolution = data.resolution;
+      selResolution.value = data.resolution;
+    }
+    if ([3, 4, 5].includes(Number(data.duration))) {
+      state.duration = Number(data.duration);
+      selDuration.value = String(state.duration);
+    }
+    if (data.modelId && INHOUSE_MODELS.some((m) => m.id === data.modelId)) {
+      state.modelId = data.modelId;
+      selModel.value = data.modelId;
+    }
+    if (data.presetId && FACT_PRESETS.some((p) => p.id === data.presetId)) {
+      state.presetId = data.presetId;
+      selPreset.value = data.presetId;
+    }
+    if (typeof data.factTitle === 'string') {
+      state.factTitle = data.factTitle;
+      factTitleInput.value = data.factTitle;
+    }
+    if (typeof data.factSubtitle === 'string') {
+      state.factSubtitle = data.factSubtitle;
+      factSubtitleInput.value = data.factSubtitle;
+    }
+
+    state.scenePlan = data;
+    const customCode = data.customCodeSource || data.generatedCustomCode || '';
+    compileCustomCode(customCode);
+
+    updateDescriptions();
+    updateStageDisplayGeometry();
+    syncEditorContent();
+
+    if (data.imageSrc && data.imageSrc !== state.imageSrc) {
+      await loadImageElement(data.imageSrc).then((img) => {
+        state.imgElement = img;
+        state.imageSrc = data.imageSrc;
+      }).catch(() => {});
+    }
+
+    renderCurrentFrame();
+    editorStatus.textContent = `✓ Loaded scene from ${decodeURIComponent(url)}`;
+    editorStatus.style.color = '#34d399';
+  } catch (err) {
+    editorStatus.textContent = `⚠️ Failed to load scene: ${err.message}`;
+    editorStatus.style.color = '#f87171';
+  }
+}
+
 async function saveSceneToDisk() {
   try {
     const baseName = state.imageName.replace(/\.[^.]+$/, '');
@@ -552,11 +657,12 @@ async function saveSceneToDisk() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: `${baseName}-${state.presetId}-${state.aspectRatio.replace(':', 'x')}`,
+        name: `${baseName}-${state.modelId}-s${state.variationSeed}-${state.aspectRatio.replace(':', 'x')}`,
         format: 'json',
         content: JSON.stringify(
           {
             ...state.scenePlan,
+            imageSrc: state.imageSrc.startsWith('data:') ? undefined : state.imageSrc,
             customCodeSource: state.customCodeSource
           },
           null,
@@ -568,6 +674,7 @@ async function saveSceneToDisk() {
     if (data.ok) {
       editorStatus.textContent = `✓ Saved to ${data.path}`;
       editorStatus.style.color = '#34d399';
+      await refreshMediaLists();
     }
   } catch (err) {
     editorStatus.textContent = `⚠️ Save failed: ${err.message}`;
@@ -655,14 +762,20 @@ function bindEvents() {
 
   selModel.addEventListener('change', () => {
     state.modelId = selModel.value;
+    state.variationSeed = 1;
     updateDescriptions();
-    rebuildScenePlanFromModel();
+    rebuildScenePlanFromModel({ autoSelectPreset: true });
   });
 
   selPreset.addEventListener('change', () => {
     state.presetId = selPreset.value;
     updateDescriptions();
-    rebuildScenePlanFromModel();
+    rebuildScenePlanFromModel({ autoSelectPreset: false });
+  });
+
+  motionPromptInput.addEventListener('input', () => {
+    state.motionPrompt = motionPromptInput.value;
+    rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
   factTitleInput.addEventListener('input', () => {
@@ -677,6 +790,22 @@ function bindEvents() {
     state.scenePlan.factSubtitle = state.factSubtitle;
     if (state.editorTab === 'json') syncEditorContent();
     renderCurrentFrame();
+  });
+
+  btnVariation.addEventListener('click', () => {
+    state.variationSeed += 1;
+    rebuildScenePlanFromModel({ autoSelectPreset: false });
+  });
+
+  btnRegeneratePlan.addEventListener('click', () => {
+    state.variationSeed = 1;
+    rebuildScenePlanFromModel({ autoSelectPreset: true });
+  });
+
+  selSavedScene.addEventListener('change', () => {
+    if (selSavedScene.value) {
+      loadSavedSceneFromUrl(selSavedScene.value);
+    }
   });
 
   btnPlayPause.addEventListener('click', () => {
@@ -703,7 +832,6 @@ function bindEvents() {
   codeEditor.addEventListener('input', () => applyEditorChanges());
   btnApplyCode.addEventListener('click', () => applyEditorChanges());
   btnSaveScene.addEventListener('click', () => saveSceneToDisk());
-  btnRegeneratePlan.addEventListener('click', () => rebuildScenePlanFromModel());
 
   // Batch Mode Controls
   btnAddBatchFiles.addEventListener('click', () => batchFileInput.click());
@@ -762,7 +890,7 @@ function handleMultipleBatchFiles(files) {
 initDropdowns();
 updateStageDisplayGeometry();
 bindEvents();
-refreshOutputsList();
+refreshMediaLists();
 loadSourceImage(state.imageSrc, state.imageName).then(() => {
   requestAnimationFrame(animationLoop);
 });
