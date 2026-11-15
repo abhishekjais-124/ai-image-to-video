@@ -1,21 +1,24 @@
 {
   "name": "ai-image-to-video",
-  "version": "1.0.0",
-  "description": "Convert static images into **3–5 second cinematic 720p / 1080p video clips** (`9:16 Vertical Shorts` & `16:9 Widescreen`) at **$0 cost** using **AI Code-Driven Animation (`.html` / `.css` / `.tsx` / `WebGL Canvas`)** — no local GPU hardware required.",
-  "main": "index.js",
+  "version": "1.1.0",
+  "description": "In-House AI Image-to-Video Studio for Fact Shorts (1080p minimum, locked 30 FPS, 3-5s clips, zero API keys, compatible with Antigravity, Claude Desktop, and Codex)",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/abhishekjais-124/ai-image-to-video.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/abhishekjais-124/ai-image-to-video/issues"
-  },
-  "homepage": "https://github.com/abhishekjais-124/ai-image-to-video#readme"
+  "keywords": [
+    "image-to-video",
+    "fact-shorts",
+    "1080p",
+    "30fps",
+    "canvas",
+    "webcodecs"
+  ],
+  "author": "aj <abhishekjaiswal124@gmail.com>",
+  "license": "MIT"
 }

@@ -1,285 +1,483 @@
-// Built-in presets for Fact Shorts cinematic animation
-// Each preset generates complete standalone HTML/CSS/Canvas/WebGL animation code
+// Deterministic, time-driven Fact-Short presets (30 FPS constant frame rate, 1080p minimum)
+// Plain ES Module — works in Browser, Antigravity, Claude Desktop, and Codex.
 
-export interface SceneConfig {
-  aspectRatio: '9:16' | '16:9';
-  resolution: '720p' | '1080p';
-  duration: number; // 3, 4, or 5 seconds
-  preset: string;
-  imageSrc: string;
-  customPrompt?: string;
-  factTitle?: string;
-  factSubtitle?: string;
-}
+export const FIXED_FPS = 30;
+
+export const RESOLUTIONS = {
+  '1080p': {
+    label: '1080p Full HD (Standard)',
+    '9:16': { width: 1080, height: 1920 },
+    '16:9': { width: 1920, height: 1080 }
+  },
+  '1440p': {
+    label: '1440p QHD (2K)',
+    '9:16': { width: 1440, height: 2560 },
+    '16:9': { width: 2560, height: 1440 }
+  }
+};
 
 export const FACT_PRESETS = [
   {
     id: 'documentary-kenburns',
     name: 'Documentary Ken Burns + Dust',
-    description: 'Smooth cinematic slow zoom with floating ambient dust particles and warm vignette. Ideal for historical, nature, and deep facts.',
-    icon: '📽️'
+    icon: '📽️',
+    description:
+      'Smooth camera push toward the focal point with warm floating dust motes and documentary vignette.',
+    defaults: {
+      zoomStart: 1.02,
+      zoomEnd: 1.18,
+      panX: -0.03,
+      panY: -0.04,
+      rotateDeg: 0.4,
+      particleCount: 65,
+      vignetteStrength: 0.72,
+      warmth: 0.12
+    }
   },
   {
     id: '3d-perspective-tilt',
     name: '3D Perspective Tilt + Spotlight',
-    description: 'Dynamic 3D camera pan/tilt with an animated moving spotlight highlighting the subject. High retention for viral shorts.',
-    icon: '✨'
+    icon: '✨',
+    description:
+      'Dynamic 3D orbital pan with a sweeping volumetric spotlight and specular light flare over the subject.',
+    defaults: {
+      zoomStart: 1.05,
+      zoomEnd: 1.2,
+      panX: 0.04,
+      panY: -0.03,
+      rotateDeg: -1.1,
+      particleCount: 40,
+      vignetteStrength: 0.82,
+      warmth: 0.08
+    }
   },
   {
     id: 'mystery-fog-shake',
     name: 'Mystery Fog + Handheld Pulse',
-    description: 'Atmospheric rolling mist, volumetric shadow pulses, and subtle handheld documentary camera motion.',
-    icon: '🌫️'
+    icon: '🌫️',
+    description:
+      'Layered rolling atmospheric fog, subtle handheld documentary camera sway, and deep shadow pulses.',
+    defaults: {
+      zoomStart: 1.06,
+      zoomEnd: 1.16,
+      panX: -0.02,
+      panY: 0.02,
+      rotateDeg: 0.6,
+      particleCount: 45,
+      vignetteStrength: 0.86,
+      warmth: -0.14
+    }
   },
   {
     id: 'scifi-cyber-glitch',
     name: 'Sci-Fi Cyber Grid + Glitch',
-    description: 'Digital holographic scan lines, chromatic aberration pulse, and high-tech glow for tech and futuristic facts.',
-    icon: '⚡'
+    icon: '⚡',
+    description:
+      'Holographic HUD grid, sweeping cyan scanline, RGB slice glitch pulses, and digital telemetry frame.',
+    defaults: {
+      zoomStart: 1.03,
+      zoomEnd: 1.15,
+      panX: 0.0,
+      panY: -0.03,
+      rotateDeg: 0.0,
+      particleCount: 50,
+      vignetteStrength: 0.75,
+      warmth: -0.18
+    }
   },
   {
     id: 'vintage-film-grain',
     name: 'Vintage Film Grain + Light Leaks',
-    description: 'Authentic 16mm/35mm film grain jitter with organic warm light leaks and subtle shutter flicker.',
-    icon: '🎞️'
+    icon: '🎞️',
+    description:
+      'Authentic 16mm/35mm film grain, organic amber light leaks, gate weave, and vertical celluloid scratches.',
+    defaults: {
+      zoomStart: 1.04,
+      zoomEnd: 1.14,
+      panX: 0.025,
+      panY: -0.025,
+      rotateDeg: 0.35,
+      particleCount: 35,
+      vignetteStrength: 0.78,
+      warmth: 0.22
+    }
   }
 ];
 
-export function getResolutionDims(aspectRatio: '9:16' | '16:9', resolution: '720p' | '1080p') {
-  if (aspectRatio === '9:16') {
-    return resolution === '1080p' ? { width: 1080, height: 1920 } : { width: 720, height: 1280 };
-  } else {
-    return resolution === '1080p' ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
+export function getResolutionDims(aspectRatio = '9:16', resolution = '1080p') {
+  const resTier = RESOLUTIONS[resolution] || RESOLUTIONS['1080p'];
+  return resTier[aspectRatio] || resTier['9:16'];
+}
+
+// Deterministic pseudo-random generator (mulberry32) so frame n at t = n/30 is 100% repeatable
+export function seededRandom(seed) {
+  let a = (seed >>> 0) + 0x6d2b79f5;
+  return function () {
+    a = Math.imul(a ^ (a >>> 15), a | 1);
+    a ^= a + Math.imul(a ^ (a >>> 7), a | 61);
+    return ((a ^ (a >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Smooth cubic ease-in-out
+export function easeInOutCubic(x) {
+  const c = Math.max(0, Math.min(1, x));
+  return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+}
+
+/**
+ * Compute deterministic camera transform at time `t` (seconds) for the active preset & scenePlan
+ */
+export function computeCameraTransform(t, duration, presetId, scenePlan = {}) {
+  const progress = Math.max(0, Math.min(1, t / Math.max(0.1, duration)));
+  const eased = easeInOutCubic(progress);
+
+  const zoomStart = Number(scenePlan.zoomStart ?? 1.03);
+  const zoomEnd = Number(scenePlan.zoomEnd ?? 1.18);
+  const panX = Number(scenePlan.panX ?? -0.02);
+  const panY = Number(scenePlan.panY ?? -0.03);
+  const rotateDeg = Number(scenePlan.rotateDeg ?? 0.5);
+
+  let scale = zoomStart + (zoomEnd - zoomStart) * eased;
+  let offsetX = panX * eased;
+  let offsetY = panY * eased;
+  let rotationRad = ((rotateDeg * eased) * Math.PI) / 180;
+
+  // Preset-specific camera motion modulation
+  if (presetId === 'mystery-fog-shake') {
+    // Organic handheld documentary camera sway
+    const shakeAmp = Number(scenePlan.shakeIntensity ?? 0.008);
+    offsetX += Math.sin(t * 4.7) * shakeAmp + Math.cos(t * 9.3) * (shakeAmp * 0.4);
+    offsetY += Math.cos(t * 5.3) * shakeAmp + Math.sin(t * 8.1) * (shakeAmp * 0.4);
+    rotationRad += Math.sin(t * 3.2) * 0.004;
+  } else if (presetId === 'vintage-film-grain') {
+    // Subtle 16mm projector gate weave
+    const frameIndex = Math.floor(t * FIXED_FPS);
+    const rng = seededRandom(frameIndex * 997 + 42);
+    offsetX += (rng() - 0.5) * 0.0025;
+    offsetY += (rng() - 0.5) * 0.0025;
+  } else if (presetId === '3d-perspective-tilt') {
+    // Smooth orbital arc
+    offsetX += Math.sin(progress * Math.PI) * 0.018;
+  }
+
+  return { scale, offsetX, offsetY, rotationRad, progress, eased };
+}
+
+/**
+ * Render preset-specific atmospheric & VFX overlays onto `ctx` at exact timestamp `t`
+ */
+export function renderPresetEffects(ctx, { presetId, t, duration, width, height, scenePlan = {}, drawCoverImage }) {
+  switch (presetId) {
+    case 'documentary-kenburns':
+      renderDocumentaryDust(ctx, t, duration, width, height, scenePlan);
+      break;
+    case '3d-perspective-tilt':
+      render3DSpotlight(ctx, t, duration, width, height, scenePlan);
+      break;
+    case 'mystery-fog-shake':
+      renderMysteryFog(ctx, t, duration, width, height, scenePlan);
+      break;
+    case 'scifi-cyber-glitch':
+      renderSciFiGlitch(ctx, t, duration, width, height, scenePlan, drawCoverImage);
+      break;
+    case 'vintage-film-grain':
+      renderVintageFilm(ctx, t, duration, width, height, scenePlan);
+      break;
+    default:
+      renderDocumentaryDust(ctx, t, duration, width, height, scenePlan);
+      break;
   }
 }
 
-export function generateSceneHtml(config: SceneConfig): string {
-  const { width, height } = getResolutionDims(config.aspectRatio, config.resolution);
-  const duration = config.duration || 4;
-  const image = config.imageSrc;
-  const title = config.factTitle || '';
-  const subtitle = config.factSubtitle || '';
+/* ============================================================================
+   PRESET 1: Documentary Ken Burns + Floating Golden Dust Motes
+   ============================================================================ */
+function renderDocumentaryDust(ctx, t, duration, width, height, scenePlan) {
+  const count = Number(scenePlan.particleCount ?? 65);
+  const rng = seededRandom(101);
+  const accentColor = scenePlan.accentColor || '255, 225, 155';
 
-  // Preset specific shaders / canvas scripts
-  let effectScript = '';
+  ctx.save();
+  // Warm sunlight wash from top-right
+  const sunGrad = ctx.createRadialGradient(
+    width * 0.82,
+    height * 0.14,
+    width * 0.02,
+    width * 0.82,
+    height * 0.14,
+    width * 0.95
+  );
+  sunGrad.addColorStop(0, `rgba(${accentColor}, 0.22)`);
+  sunGrad.addColorStop(0.5, `rgba(${accentColor}, 0.06)`);
+  sunGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = sunGrad;
+  ctx.fillRect(0, 0, width, height);
 
-  if (config.preset === 'documentary-kenburns') {
-    effectScript = `
-      // Floating dust particles
-      const canvas = document.getElementById('effectCanvas');
-      const ctx = canvas.getContext('2d');
-      const particles = Array.from({length: 60}, () => ({
-        x: Math.random() * ${width},
-        y: Math.random() * ${height},
-        radius: Math.random() * 2.5 + 0.5,
-        alpha: Math.random() * 0.7 + 0.2,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: - (Math.random() * 0.8 + 0.3)
-      }));
+  // Deterministic floating dust motes with depth layers
+  for (let i = 0; i < count; i++) {
+    const startX = rng() * width;
+    const startY = rng() * height;
+    const depth = 0.4 + rng() * 1.6; // parallax depth
+    const radius = (1.2 + rng() * 3.4) * (width / 1080) * (depth * 0.75);
+    const speedY = (24 + rng() * 48) * depth;
+    const speedX = (rng() - 0.5) * 28 * depth;
+    const phase = rng() * Math.PI * 2;
 
-      function renderFrame() {
-        ctx.clearRect(0, 0, ${width}, ${height});
-        particles.forEach(p => {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-          ctx.fillStyle = \`rgba(255, 235, 180, \${p.alpha})\`;
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = 'rgba(255, 215, 100, 0.8)';
-          ctx.fill();
-          p.x += p.vx;
-          p.y += p.vy;
-          if (p.y < 0) p.y = ${height};
-          if (p.x < 0) p.x = ${width};
-          if (p.x > ${width}) p.x = 0;
-        });
-        requestAnimationFrame(renderFrame);
-      }
-      renderFrame();
-    `;
-  } else if (config.preset === '3d-perspective-tilt') {
-    effectScript = `
-      // Dynamic moving spotlight + specular flare
-      const canvas = document.getElementById('effectCanvas');
-      const ctx = canvas.getContext('2d');
-      let startTime = performance.now();
+    const x = (((startX + speedX * t + Math.sin(t * 1.8 + phase) * 18) % width) + width) % width;
+    const y = (((startY - speedY * t) % height) + height) % height;
+    const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 3.4 + phase));
+    const alpha = Math.min(0.85, (0.2 + rng() * 0.5) * twinkle);
 
-      function renderFrame(now) {
-        const elapsed = (now - startTime) / 1000;
-        const progress = (elapsed % ${duration}) / ${duration};
-        ctx.clearRect(0, 0, ${width}, ${height});
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${accentColor}, ${alpha.toFixed(3)})`;
+    ctx.shadowBlur = 12 * (width / 1080);
+    ctx.shadowColor = `rgba(${accentColor}, 0.8)`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
 
-        const spotX = ${width} * 0.3 + Math.sin(progress * Math.PI * 2) * (${width} * 0.35);
-        const spotY = ${height} * 0.4 + Math.cos(progress * Math.PI * 2) * (${height} * 0.2);
+/* ============================================================================
+   PRESET 2: 3D Perspective Tilt + Volumetric Spotlight + Specular Rays
+   ============================================================================ */
+function render3DSpotlight(ctx, t, duration, width, height, scenePlan) {
+  const progress = t / Math.max(0.1, duration);
+  const focusX = Number(scenePlan.focusX ?? 0.5);
+  const focusY = Number(scenePlan.focusY ?? 0.42);
 
-        const grad = ctx.createRadialGradient(spotX, spotY, 20, spotX, spotY, ${width} * 0.75);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
-        grad.addColorStop(0.4, 'rgba(255, 220, 180, 0.12)');
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+  // Spotlight sweeps across the subject focal zone
+  const spotX = width * (focusX + Math.sin(progress * Math.PI * 2) * 0.18);
+  const spotY = height * (focusY + Math.cos(progress * Math.PI * 2) * 0.1);
+  const spotRadius = Math.max(width, height) * 0.52;
 
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, ${width}, ${height});
-        requestAnimationFrame(renderFrame);
-      }
-      requestAnimationFrame(renderFrame);
-    `;
-  } else if (config.preset === 'scifi-cyber-glitch') {
-    effectScript = `
-      // Cyber scanline grid + chromatic pulse
-      const canvas = document.getElementById('effectCanvas');
-      const ctx = canvas.getContext('2d');
-      let t = 0;
+  ctx.save();
+  // Darken outer room while illuminating the subject cone
+  const spotGrad = ctx.createRadialGradient(spotX, spotY, spotRadius * 0.08, spotX, spotY, spotRadius);
+  spotGrad.addColorStop(0, 'rgba(255, 250, 235, 0.24)');
+  spotGrad.addColorStop(0.35, 'rgba(255, 220, 165, 0.08)');
+  spotGrad.addColorStop(0.75, 'rgba(5, 8, 18, 0.52)');
+  spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0.78)');
+  ctx.fillStyle = spotGrad;
+  ctx.fillRect(0, 0, width, height);
 
-      function renderFrame() {
-        ctx.clearRect(0, 0, ${width}, ${height});
-        t += 1.5;
+  // Volumetric god-ray beam from top corner toward spotlight center
+  ctx.translate(width * 0.15, -height * 0.05);
+  const angle = Math.atan2(spotY + height * 0.05, spotX - width * 0.15);
+  ctx.rotate(angle);
+  const beamLen = Math.hypot(width, height);
+  const beamGrad = ctx.createLinearGradient(0, 0, beamLen, 0);
+  beamGrad.addColorStop(0, 'rgba(255, 240, 200, 0.22)');
+  beamGrad.addColorStop(0.6, 'rgba(255, 225, 170, 0.07)');
+  beamGrad.addColorStop(1, 'rgba(255, 225, 170, 0)');
+  ctx.fillStyle = beamGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, -width * 0.04);
+  ctx.lineTo(beamLen, -width * 0.28);
+  ctx.lineTo(beamLen, width * 0.28);
+  ctx.lineTo(0, width * 0.04);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 
-        // Scan line
-        const scanY = (t * 6) % ${height};
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.25)';
-        ctx.fillRect(0, scanY, ${width}, 4);
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#00f0ff';
+  // Subtle 3D perspective frame border lines
+  ctx.save();
+  const inset = Math.round(width * 0.045);
+  const tiltShift = Math.sin(progress * Math.PI * 2) * (width * 0.012);
+  ctx.strokeStyle = 'rgba(255, 230, 170, 0.22)';
+  ctx.lineWidth = Math.max(2, width / 540);
+  ctx.beginPath();
+  ctx.moveTo(inset + tiltShift, inset);
+  ctx.lineTo(width - inset + tiltShift, inset);
+  ctx.lineTo(width - inset - tiltShift, height - inset);
+  ctx.lineTo(inset - tiltShift, height - inset);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
 
-        // Grid overlay
-        ctx.strokeStyle = 'rgba(0, 240, 255, 0.04)';
-        ctx.lineWidth = 1;
-        for (let x = 0; x < ${width}; x += 80) {
-          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ${height}); ctx.stroke();
-        }
-        for (let y = 0; y < ${height}; y += 80) {
-          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(${width}, y); ctx.stroke();
-        }
-        requestAnimationFrame(renderFrame);
-      }
-      renderFrame();
-    `;
-  } else {
-    // Default / Mist / Film
-    effectScript = `
-      const canvas = document.getElementById('effectCanvas');
-      const ctx = canvas.getContext('2d');
-      let frame = 0;
-      function renderFrame() {
-        ctx.clearRect(0, 0, ${width}, ${height});
-        frame++;
-        // Film grain noise
-        const imgData = ctx.createImageData(${width}, ${height});
-        const buffer = new Uint32Array(imgData.data.buffer);
-        for (let i = 0; i < buffer.length; i += 4) {
-          if (Math.random() < 0.08) {
-            buffer[i] = (Math.random() * 255) << 24 | 0x00ffffff;
-          }
-        }
-        ctx.putImageData(imgData, 0, 0);
-        requestAnimationFrame(renderFrame);
-      }
-      renderFrame();
-    `;
+/* ============================================================================
+   PRESET 3: Mystery Fog + Rolling Mist + Cold Shadow Pulse
+   ============================================================================ */
+function renderMysteryFog(ctx, t, duration, width, height, scenePlan) {
+  const rng = seededRandom(303);
+  ctx.save();
+
+  // Cold moody cyan/indigo shadow tint
+  ctx.fillStyle = 'rgba(10, 22, 38, 0.24)';
+  ctx.fillRect(0, 0, width, height);
+
+  // Multi-layered procedural rolling fog banks
+  const puffCount = 26;
+  for (let i = 0; i < puffCount; i++) {
+    const baseY = height * (0.25 + rng() * 0.72);
+    const baseX = rng() * width;
+    const puffRadius = width * (0.28 + rng() * 0.38);
+    const driftSpeed = (35 + rng() * 55) * (i % 2 === 0 ? 1 : -1);
+    const x = (((baseX + driftSpeed * t) % (width + puffRadius * 2)) + (width + puffRadius * 2)) %
+      (width + puffRadius * 2) - puffRadius;
+    const y = baseY + Math.sin(t * 1.1 + i) * (height * 0.02);
+    const alpha = 0.07 + 0.05 * Math.sin(t * 1.5 + i * 0.7);
+
+    const fogGrad = ctx.createRadialGradient(x, y, puffRadius * 0.1, x, y, puffRadius);
+    fogGrad.addColorStop(0, `rgba(200, 220, 238, ${alpha.toFixed(3)})`);
+    fogGrad.addColorStop(0.55, `rgba(160, 185, 210, ${(alpha * 0.5).toFixed(3)})`);
+    fogGrad.addColorStop(1, 'rgba(160, 185, 210, 0)');
+
+    ctx.fillStyle = fogGrad;
+    ctx.beginPath();
+    ctx.arc(x, y, puffRadius, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=${width}, height=${height}, initial-scale=1.0" />
-  <title>Fact Short Scene (${config.aspectRatio} ${config.resolution})</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body, html {
-      width: ${width}px;
-      height: ${height}px;
-      overflow: hidden;
-      background: #000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    #stage {
-      position: relative;
-      width: ${width}px;
-      height: ${height}px;
-      overflow: hidden;
-      perspective: 1200px;
-    }
-    .main-image {
-      position: absolute;
-      top: -5%;
-      left: -5%;
-      width: 110%;
-      height: 110%;
-      object-fit: cover;
-      transform-origin: center center;
-      animation: cameraMotion ${duration}s cubic-bezier(0.25, 1, 0.5, 1) infinite alternate;
-      will-change: transform, filter;
-    }
-    @keyframes cameraMotion {
-      0% {
-        transform: scale(1.0) translate3d(0, 0, 0) rotate(0deg);
-        filter: brightness(0.95) contrast(1.05);
-      }
-      100% {
-        transform: scale(1.14) translate3d(-15px, -25px, 0) rotate(0.6deg);
-        filter: brightness(1.08) contrast(1.12);
-      }
-    }
-    #effectCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: ${width}px;
-      height: ${height}px;
-      pointer-events: none;
-      mix-blend-mode: screen;
-    }
-    .vignette {
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(circle at center, transparent 45%, rgba(0,0,0,0.65) 90%, rgba(0,0,0,0.92) 100%);
-      pointer-events: none;
-    }
-    .fact-card {
-      position: absolute;
-      bottom: ${config.aspectRatio === '9:16' ? '240px' : '60px'};
-      left: 50%;
-      transform: translateX(-50%);
-      width: 85%;
-      text-align: center;
-      color: #fff;
-      text-shadow: 0 4px 18px rgba(0,0,0,0.85);
-      z-index: 10;
-      pointer-events: none;
-    }
-    .fact-title {
-      font-size: ${config.aspectRatio === '9:16' ? '56px' : '44px'};
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      background: linear-gradient(180deg, #ffffff 30%, #ffd166 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 12px;
-    }
-    .fact-subtitle {
-      font-size: ${config.aspectRatio === '9:16' ? '32px' : '26px'};
-      font-weight: 600;
-      color: #e2e8f0;
-      line-height: 1.35;
-    }
-  </style>
-</head>
-<body>
-  <div id="stage">
-    <img class="main-image" src="${image}" alt="Fact Scene" />
-    <canvas id="effectCanvas" width="${width}" height="${height}"></canvas>
-    <div class="vignette"></div>
-    ${title ? `
-    <div class="fact-card">
-      <div class="fact-title">${title}</div>
-      ${subtitle ? `<div class="fact-subtitle">${subtitle}</div>` : ''}
-    </div>` : ''}
-  </div>
+  // Heartbeat mystery darkness pulse around edges
+  const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 1.5);
+  const pulseGrad = ctx.createRadialGradient(
+    width * 0.5,
+    height * 0.45,
+    width * 0.18,
+    width * 0.5,
+    height * 0.5,
+    Math.max(width, height) * 0.65
+  );
+  pulseGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  pulseGrad.addColorStop(1, `rgba(2, 5, 12, ${(0.45 + pulse * 0.25).toFixed(3)})`);
+  ctx.fillStyle = pulseGrad;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
 
-  <script>
-    ${effectScript}
-  </script>
-</body>
-</html>`;
+/* ============================================================================
+   PRESET 4: Sci-Fi Cyber Grid + Scanline + RGB Glitch Slices
+   ============================================================================ */
+function renderSciFiGlitch(ctx, t, duration, width, height, scenePlan, drawCoverImage) {
+  const frameIndex = Math.floor(t * FIXED_FPS);
+  const rng = seededRandom(frameIndex * 131 + 7);
+
+  ctx.save();
+  // Subtle cyber grid overlay
+  const gridStep = Math.round(width / 12);
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.07)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= width; x += gridStep) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= height; y += gridStep) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  // Sweeping laser scanline beam
+  const scanY = ((t * height * 0.42) % height + height) % height;
+  const scanGrad = ctx.createLinearGradient(0, scanY - 40, 0, scanY + 12);
+  scanGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+  scanGrad.addColorStop(0.8, 'rgba(0, 240, 255, 0.22)');
+  scanGrad.addColorStop(1, 'rgba(180, 255, 255, 0.65)');
+  ctx.fillStyle = scanGrad;
+  ctx.fillRect(0, scanY - 40, width, 52);
+
+  // Periodic deterministic glitch burst (every ~0.8s for 4 frames)
+  const isGlitchWindow = frameIndex % 24 < 4 || frameIndex % 37 === 0;
+  if (isGlitchWindow && typeof drawCoverImage === 'function') {
+    const sliceCount = 5;
+    for (let s = 0; s < sliceCount; s++) {
+      const sliceY = rng() * height;
+      const sliceH = (12 + rng() * 55) * (height / 1920);
+      const shiftX = (rng() - 0.5) * 44 * (width / 1080);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, sliceY, width, sliceH);
+      ctx.clip();
+      ctx.translate(shiftX, 0);
+      drawCoverImage();
+      // Cyan/Magenta chromatic tint on displaced slice
+      ctx.fillStyle = s % 2 === 0 ? 'rgba(0, 255, 255, 0.18)' : 'rgba(255, 0, 128, 0.18)';
+      ctx.fillRect(0, sliceY, width, sliceH);
+      ctx.restore();
+    }
+  }
+
+  // HUD Corner Brackets
+  const pad = Math.round(width * 0.045);
+  const len = Math.round(width * 0.06);
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.55)';
+  ctx.lineWidth = Math.max(2, width / 360);
+  const corners = [
+    [pad, pad + len, pad, pad, pad + len, pad],
+    [width - pad - len, pad, width - pad, pad, width - pad, pad + len],
+    [pad, height - pad - len, pad, height - pad, pad + len, height - pad],
+    [width - pad - len, height - pad, width - pad, height - pad, width - pad, height - pad - len]
+  ];
+  corners.forEach(([x1, y1, x2, y2, x3, y3]) => {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+/* ============================================================================
+   PRESET 5: Vintage 16mm/35mm Film Grain + Organic Light Leaks + Scratches
+   ============================================================================ */
+function renderVintageFilm(ctx, t, duration, width, height, scenePlan) {
+  const frameIndex = Math.floor(t * FIXED_FPS);
+  const rng = seededRandom(frameIndex * 313 + 19);
+
+  ctx.save();
+  // Warm sepia/amber vintage tone wash
+  ctx.fillStyle = 'rgba(215, 155, 80, 0.10)';
+  ctx.fillRect(0, 0, width, height);
+
+  // Organic sweeping amber/coral light leaks on frame edges
+  const leakX = width * (0.12 + 0.15 * Math.sin(t * 1.9));
+  const leakY = height * (0.25 + 0.2 * Math.cos(t * 1.3));
+  const leakRadius = Math.max(width, height) * 0.55;
+  const leakGrad = ctx.createRadialGradient(leakX, leakY, 10, leakX, leakY, leakRadius);
+  leakGrad.addColorStop(0, 'rgba(255, 150, 50, 0.34)');
+  leakGrad.addColorStop(0.45, 'rgba(255, 80, 60, 0.16)');
+  leakGrad.addColorStop(1, 'rgba(255, 60, 30, 0)');
+  ctx.fillStyle = leakGrad;
+  ctx.fillRect(0, 0, width, height);
+
+  // Subtle projector shutter flicker
+  const flicker = (rng() - 0.5) * 0.05;
+  if (flicker > 0) {
+    ctx.fillStyle = `rgba(255, 245, 220, ${flicker.toFixed(3)})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // Deterministic film dust specks & vertical celluloid scratches
+  const scratchCount = 2;
+  for (let s = 0; s < scratchCount; s++) {
+    if (rng() > 0.35) {
+      const sx = width * (0.15 + rng() * 0.7);
+      ctx.strokeStyle = `rgba(255, 245, 220, ${(0.08 + rng() * 0.14).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, width / 900);
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx + (rng() - 0.5) * 8, height);
+      ctx.stroke();
+    }
+  }
+
+  // Coarse 16mm grain specks
+  const speckCount = 140;
+  for (let i = 0; i < speckCount; i++) {
+    const gx = rng() * width;
+    const gy = rng() * height;
+    const gSize = (1 + rng() * 2.2) * (width / 1080);
+    const isLight = rng() > 0.45;
+    ctx.fillStyle = isLight ? 'rgba(255, 245, 225, 0.16)' : 'rgba(15, 10, 5, 0.22)';
+    ctx.fillRect(gx, gy, gSize, gSize);
+  }
+  ctx.restore();
 }
