@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment variables (API keys, secrets)
+.env
+.env.local
+.env.*.local
+
+# User-uploaded raw media & rendered heavy video outputs
+# (Keep folder structure via .gitkeep, ignore heavy generated files)
+media/inputs/*
+!media/inputs/.gitkeep
+media/outputs/*
+!media/outputs/.gitkeep
+media/generated-code/*
+!media/generated-code/.gitkeep
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

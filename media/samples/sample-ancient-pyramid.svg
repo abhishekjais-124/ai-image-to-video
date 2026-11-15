@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#090714"/>
+      <stop offset="55%" stop-color="#2c1638"/>
+      <stop offset="80%" stop-color="#b55933"/>
+      <stop offset="100%" stop-color="#f2a649"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="50%" cy="32%" r="16%">
+      <stop offset="0%" stop-color="#fff4d2"/>
+      <stop offset="60%" stop-color="#f7b955" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#f7b955" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#sky)"/>
+  <circle cx="540" cy="614" r="280" fill="url(#moon)"/>
+  <polygon points="540,720 120,1520 960,1520" fill="#1c0e18"/>
+  <polygon points="540,720 540,1520 960,1520" fill="#11080f"/>
+  <rect y="1500" width="1080" height="420" fill="#0d060a"/>
+</svg>
