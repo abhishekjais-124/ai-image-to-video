@@ -11,14 +11,14 @@ import {
 } from '../engine/renderer.js';
 import {
   INHOUSE_MODELS,
-  buildScenePlan
+  buildScenePlan,
+  planSceneTimeline
 } from '../models/inhouse-models.js';
-import {
-  exportClipToMp4,
-  saveVideoToOutputs
-} from '../engine/exporter.js';
+import { saveVideoToOutputs } from '../engine/exporter.js';
 import { CHARACTER_ACTIONS } from '../engine/character.js';
-import { RENDER_QUALITIES, beatForProgress } from '../engine/exporter.js';
+import { RENDER_QUALITIES, beatForProgress, saveReportToOutputs } from '../engine/exporter.js';
+import { produceClip } from '../engine/pipeline.js';
+import { listIssues } from '../engine/quality-inspector.js';
 
 // Built-in lossless 1080x1920 SVG Data URLs so samples always load even in sandboxed/embedded previews
 const BUILTIN_SAMPLES = {
@@ -86,6 +86,9 @@ const state = {
   factSubtitle:
     'The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.',
   scenePlan: {},
+  effectIntensity: 1,
+  captionMode: 'phrases',
+  autoRepair: true,
   characterEnabled: true,
   characterAction: 'walk-point',
   characterImgElement: null,
@@ -174,6 +177,12 @@ const exportProgressWrap = document.getElementById('exportProgressWrap');
 const exportProgressBar = document.getElementById('exportProgressBar');
 const exportProgressText = document.getElementById('exportProgressText');
 const exportVerifyBadge = document.getElementById('exportVerifyBadge');
+const qaReportEl = document.getElementById('qaReport');
+const rngEffects = document.getElementById('rngEffects');
+const effectsHintEl = document.getElementById('effectsHint');
+const selCaptionMode = document.getElementById('selCaptionMode');
+const captionHintEl = document.getElementById('captionHint');
+const chkAutoRepair = document.getElementById('chkAutoRepair');
 
 const tabJsonBtn = document.getElementById('tabJsonBtn');
 const tabJsBtn = document.getElementById('tabJsBtn');
@@ -342,7 +351,9 @@ function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
     variationSeed: state.variationSeed,
     autoSelectPreset,
     characterAction: state.characterAction,
-    characterEnabled: state.characterEnabled
+    characterEnabled: state.characterEnabled,
+    effectIntensity: state.effectIntensity,
+    captionMode: state.captionMode
   });
 
   state.scenePlan = plan;
@@ -357,8 +368,24 @@ function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
   }
 
   btnVariation.innerHTML = `New variation <span class="seed">#${state.variationSeed}</span>`;
+  updateCaptionHint();
   syncEditorContent();
   renderCurrentFrame();
+}
+
+// Tell the user honestly how caption timing was derived and whether the text fits the clip.
+function updateCaptionHint() {
+  if (!captionHintEl) return;
+  const tl = state.scenePlan.timeline;
+  if (!tl || !tl.cues || tl.cues.length === 0) {
+    captionHintEl.textContent = '';
+    return;
+  }
+  const lang = { en: 'English', hi: 'Hindi', hinglish: 'Hinglish' }[tl.language] || tl.language;
+  const timing = tl.timingSource === 'aligned' ? 'word-synced to supplied timestamps' : 'timing estimated from the text (no audio)';
+  const warn = (tl.pacing?.warnings || [])[0];
+  captionHintEl.textContent = `${lang} · ${tl.cues.length} phrase${tl.cues.length === 1 ? '' : 's'} · ${tl.shots.length} shot${tl.shots.length === 1 ? '' : 's'} · ${timing}.${warn ? ' ' + warn : ''}`;
+  captionHintEl.style.color = warn ? 'var(--warn)' : '';
 }
 
 function syncEditorContent() {
@@ -483,7 +510,7 @@ function formatElapsed(ms) {
 function updateLiveRenderStatus({ frame, totalFrames, percent, phase, beat, elapsedMs, etaMs, quality }) {
   renderStatusWrap.style.display = 'flex';
   exportProgressWrap.style.display = 'flex';
-  const phaseLabel = { analysing: 'Analysing image…', encoding: 'Rendering frames…', recording: 'Recording frames…', muxing: 'Muxing MP4…' }[phase] || phase;
+  const phaseLabel = { analysing: 'Analysing image…', encoding: 'Rendering frames…', recording: 'Recording frames…', muxing: 'Muxing MP4…', verifying: 'Decoding the file to verify it…' }[phase] || phase;
   renderStatusText.textContent =
     `${phaseLabel} Frame ${frame}/${totalFrames} · ${percent}% · ${formatElapsed(elapsedMs)} elapsed · ${formatEta(etaMs)}`;
   const beatName = beat || beatForProgress(frame / Math.max(1, totalFrames));
@@ -503,7 +530,7 @@ async function handleExportSingleClip() {
   renderStatusWrap.style.display = 'flex';
   exportProgressWrap.style.display = 'flex';
   renderStatusText.textContent = state.renderQuality === 'cinematic'
-    ? 'Cinematic Natural render — 2–5 min for a 3s clip. Watch the stage: every frame appears live as it renders.'
+    ? 'Cinematic Natural render. Watch the stage: every frame appears live as it renders.'
     : 'Fast render starting…';
   exportProgressBar.style.width = '2%';
   exportProgressText.textContent = 'Preparing 1080p 30 FPS encoder…';
@@ -515,7 +542,10 @@ async function handleExportSingleClip() {
       await loadSourceImage(state.imageSrc, state.imageName);
     }
 
-    const result = await exportClipToMp4({
+    exportVerifyBadge.style.display = 'none';
+    if (qaReportEl) qaReportEl.style.display = 'none';
+
+    const produced = await produceClip({
       img: state.imgElement,
       duration: state.duration,
       aspectRatio: state.aspectRatio,
@@ -528,16 +558,29 @@ async function handleExportSingleClip() {
       characterImg: state.characterImgElement,
       mirrorCtx: stageCtx,
       quality: state.renderQuality,
+      autoRepair: state.autoRepair,
+      onStage: ({ stage, attempt }) => {
+        const label = {
+          preflight: 'Checking framing, captions and effects before rendering…',
+          render: attempt > 1 ? `Repairing — re-rendering only the affected shot(s), pass ${attempt}…` : 'Rendering…',
+          inspect: 'Decoding and inspecting every frame…'
+        }[stage];
+        if (label) exportProgressText.textContent = label;
+      },
       onProgress: (info) => {
         updateLiveRenderStatus(info);
         btnExportMp4.textContent =
-          info.phase === 'muxing' ? 'Muxing MP4…' : `Exporting ${info.percent}%…`;
+          info.phase === 'muxing' ? 'Muxing MP4…' : info.phase === 'verifying' ? 'Verifying…' : `Exporting ${info.percent}%…`;
         exportProgressText.textContent =
           info.phase === 'muxing'
             ? 'Finalizing FastStart H.264 MP4…'
-            : `Rendering frame ${info.frame} of ${info.totalFrames} (${info.percent}%) · ${info.beat || ''}`;
+            : info.phase === 'verifying'
+              ? 'Decoding the finished file to verify every frame…'
+              : `Rendering frame ${info.frame} of ${info.totalFrames} (${info.percent}%) · ${info.beat || ''}`;
       }
     });
+    const result = produced.result;
+    const report = produced.report;
 
     const cleanStem = state.imageName
       .replace(/\.[^.]+$/, '')
@@ -551,6 +594,8 @@ async function handleExportSingleClip() {
     const saved = await saveVideoToOutputs(result.bytes, outName);
     const downloadHref = saved?.url || blobUrl;
     const finalFileName = saved?.fileName || outName;
+    report.file = finalFileName;
+    await saveReportToOutputs(report, finalFileName);
 
     const v = result.verification;
     const sizeMb = v.byteLength / (1024 * 1024);
@@ -558,12 +603,22 @@ async function handleExportSingleClip() {
 
     renderStatusText.textContent = `✓ Rendered in ${formatElapsed(Date.now() - (window.__exportStartedAt || Date.now()))} — watch it back above, then download below.`;
     btnExportMp4.textContent = '✓ Exported MP4';
+    const failed = report.summary.errors > 0;
+    const verifiedNote = v.decodeVerified
+      ? `${v.decodedFrames}/${v.frameCount} frames decoded OK`
+      : 'real-time fallback recording — not frame-verified';
     exportVerifyBadge.style.display = 'block';
-    exportVerifyBadge.className = 'res-banner ok';
+    exportVerifyBadge.className = failed || !v.decodeVerified ? 'res-banner warn' : 'res-banner ok';
     exportVerifyBadge.innerHTML =
-      `✓ Ready: <a href="${downloadHref}" download="${escapeHtml(finalFileName)}" target="_blank"><strong>Download ${escapeHtml(finalFileName)}</strong></a> ` +
-      `<span class="meta">· ${v.width} × ${v.height} · ${v.fps} fps · ${v.durationSec}s · ${kb}</span>`;
+      `${failed ? '⚠ Rendered with problems' : '✓ Ready'}: <a href="${downloadHref}" download="${escapeHtml(finalFileName)}" target="_blank"><strong>Download ${escapeHtml(finalFileName)}</strong></a> ` +
+      `<span class="meta">· ${v.width} × ${v.height} · ${v.fps} fps · ${v.durationSec}s · ${kb} · ${verifiedNote}</span>`;
     exportVerifyBadge.title = `${v.codec} · ${v.frameCount} frames`;
+    renderQualityReport(report, produced.attempts);
+    // Keep the repaired plan so the preview shows exactly what was exported.
+    if (produced.scenePlan && produced.scenePlan !== state.scenePlan) {
+      state.scenePlan = produced.scenePlan;
+      syncEditorContent();
+    }
 
     await refreshMediaLists();
   } catch (err) {
@@ -579,6 +634,33 @@ async function handleExportSingleClip() {
       exportProgressWrap.style.display = 'none';
     }, 2200);
   }
+}
+
+// Show the quality report: status, score, and every issue with what was done about it.
+function renderQualityReport(report, attempts = []) {
+  if (!qaReportEl) return;
+  const s = report.summary;
+  const statusText = { pass: 'Quality check passed', 'pass-with-warnings': 'Quality check passed with warnings', fail: 'Quality check found problems' }[s.status] || s.status;
+  const rows = listIssues(report).map((it) => {
+    const fixed = it.correction?.status === 'applied';
+    const cls = fixed && it.validation === 'pass' ? 'qa-fixed' : `qa-${it.severity}`;
+    const tag = fixed ? 'fixed' : it.severity;
+    const where = it.scope && it.scope !== 'video' ? `${it.scope}: ` : '';
+    const fix = fixed ? ` — ${it.correction.action}` : it.suggestion && it.severity !== 'info' ? ` — ${it.suggestion}` : '';
+    return `<div class="qa-row ${cls}"><span class="qa-tag">${escapeHtml(tag)}</span><span>${escapeHtml(where + it.message + fix)} <em>(${escapeHtml(it.kind)})</em></span></div>`;
+  });
+  const repairs = (report.repairs?.log || []).flatMap((entry) =>
+    entry.actions.map((a) => `<div class="qa-row qa-fixed"><span class="qa-tag">repair</span><span>${escapeHtml(`${a.scene ? a.scene + ': ' : ''}${a.action}${a.validation ? ` (${a.validation})` : ''}`)}</span></div>`)
+  );
+  const passes = attempts.length > 1
+    ? ` · ${attempts.length} render passes (${attempts.slice(1).map((a) => `re-rendered ${a.renderedShots.join(', ') || 'nothing'}`).join('; ')})`
+    : '';
+  qaReportEl.style.display = 'block';
+  qaReportEl.innerHTML =
+    `<div class="qa-head">${escapeHtml(statusText)} · score ${s.score}/100 · ${s.errors} errors · ${s.warnings} warnings${escapeHtml(passes)}</div>` +
+    repairs.join('') +
+    (rows.length ? rows.join('') : '<div class="qa-row qa-info"><span>No issues found on any shot.</span></div>') +
+    `<div class="qa-row qa-info"><span>Not evaluated: ${escapeHtml(report.notEvaluated.map((n) => n.split(' — ')[0]).join('; '))}. Full report saved next to the video (.qa.json).</span></div>`;
 }
 
 function addItemToBatchQueue({ name, src, presetId, duration, factTitle, factSubtitle }) {
@@ -604,7 +686,7 @@ function renderBatchQueueUI() {
     return;
   }
 
-  const statusLabel = { queued: 'Queued', rendering: 'Rendering…', done: 'Done' };
+  const statusLabel = { queued: 'Queued', rendering: 'Rendering…', done: 'Done', check: 'Done — check quality report', failed: 'Failed' };
 
   batchQueueListEl.innerHTML = state.batchQueue
     .map((item, i) => {
@@ -618,7 +700,7 @@ function renderBatchQueueUI() {
         <div class="batch-item-top">
           <span class="batch-name" title="${escapeHtml(item.name)}"><span class="n">${String(i + 1).padStart(2, '0')}</span>${escapeHtml(item.name)}</span>
           <span class="batch-status" data-status="${item.status}">
-            ${statusLabel[item.status] || item.status}${item.outputUrl ? ` · <a href="${item.outputUrl}" download target="_blank">Download</a>` : ''}
+            ${statusLabel[item.status] || item.status}${item.qa ? ` · QA ${item.qa}` : ''}${item.error ? ` · ${escapeHtml(item.error)}` : ''}${item.outputUrl ? ` · <a href="${item.outputUrl}" download target="_blank">Download</a>` : ''}
           </span>
         </div>
         <div class="batch-item-controls">
@@ -677,7 +759,7 @@ async function runBatchExport() {
       const item = state.batchQueue[i];
       item.status = 'rendering';
       renderBatchQueueUI();
-
+      try {
       const img = await loadImageElement(item.src);
       const plan = buildScenePlan({
         img,
@@ -691,7 +773,9 @@ async function runBatchExport() {
         motionPrompt: state.motionPrompt,
         variationSeed: i + 1,
         characterAction: state.characterAction,
-        characterEnabled: state.characterEnabled
+        characterEnabled: state.characterEnabled,
+        effectIntensity: state.effectIntensity,
+        captionMode: state.captionMode
       });
 
       let batchCustomFn = null;
@@ -703,7 +787,7 @@ async function runBatchExport() {
         }
       }
 
-      const res = await exportClipToMp4({
+      const produced = await produceClip({
         img,
         duration: item.duration,
         aspectRatio: state.aspectRatio,
@@ -716,6 +800,7 @@ async function runBatchExport() {
         characterImg: state.characterImgElement,
         mirrorCtx: stageCtx,
         quality: state.renderQuality,
+        autoRepair: state.autoRepair,
         onProgress: (info) => {
           updateLiveRenderStatus(info);
           btnRunBatch.textContent = `Clip ${i + 1}/${state.batchQueue.length} (${info.percent}%)…`;
@@ -723,13 +808,23 @@ async function runBatchExport() {
         }
       });
 
+      const res = produced.result;
       const stem = item.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-');
       const fileName = `batch-${String(i + 1).padStart(2, '0')}-${stem}-${item.presetId}-${state.resolution}-30fps.${res.ext}`;
       const blobUrl = triggerBrowserDownload(res.blob, fileName);
       const saved = await saveVideoToOutputs(res.bytes, fileName);
+      produced.report.file = saved?.fileName || fileName;
+      await saveReportToOutputs(produced.report, saved?.fileName || fileName);
 
-      item.status = 'done';
+      item.status = produced.report.summary.errors > 0 ? 'check' : 'done';
+      item.qa = `${produced.report.summary.score}/100`;
       item.outputUrl = saved?.url || blobUrl;
+      } catch (err) {
+        // One failed clip must not stop the rest of the queue.
+        item.status = 'failed';
+        item.error = String(err?.message || err);
+        console.warn(`Batch clip ${i + 1} failed:`, err);
+      }
       renderBatchQueueUI();
     }
 
@@ -971,6 +1066,28 @@ function bindEvents() {
     if (q && qualityHintEl) qualityHintEl.textContent = q.description + (state.renderQuality === 'cinematic' ? ' The stage shows every frame live as it renders.' : '');
   });
 
+  on(rngEffects, 'input', () => {
+    state.effectIntensity = Number(rngEffects.value);
+    if (effectsHintEl) {
+      effectsHintEl.textContent = `Effect strength ${Math.round(state.effectIntensity * 100)}%. Light and atmosphere are measured against the clean image and held inside exposure limits automatically.`;
+    }
+    // Keep hand edits to the plan: only the intensity changes.
+    state.scenePlan = { ...state.scenePlan, effectIntensity: state.effectIntensity };
+    if (state.editorTab === 'json') syncEditorContent();
+    renderCurrentFrame();
+  });
+
+  on(selCaptionMode, 'change', () => {
+    state.captionMode = selCaptionMode.value === 'static' ? 'static' : 'phrases';
+    state.scenePlan = { ...state.scenePlan, captionMode: state.captionMode };
+    if (state.editorTab === 'json') syncEditorContent();
+    renderCurrentFrame();
+  });
+
+  on(chkAutoRepair, 'change', () => {
+    state.autoRepair = chkAutoRepair.checked;
+  });
+
   on(selDuration, 'change', () => {
     state.duration = Number(selDuration.value);
     state.currentFrame = 0;
@@ -1005,7 +1122,20 @@ function bindEvents() {
 
   on(factSubtitleInput, 'input', () => {
     state.factSubtitle = factSubtitleInput.value;
-    state.scenePlan.factSubtitle = state.factSubtitle;
+    // New text → new phrases, shots and beats (the rest of the plan is kept).
+    state.scenePlan = {
+      ...state.scenePlan,
+      factSubtitle: state.factSubtitle,
+      timeline: planSceneTimeline({
+        factSubtitle: state.factSubtitle,
+        duration: state.duration,
+        modelId: state.modelId,
+        variationSeed: state.variationSeed,
+        motionPrompt: state.motionPrompt,
+        wordTimings: state.scenePlan.wordTimings || null
+      })
+    };
+    updateCaptionHint();
     if (state.editorTab === 'json') syncEditorContent();
     renderCurrentFrame();
   });
@@ -1162,6 +1292,8 @@ function initStudio() {
   try { bindEvents(); } catch (e) { console.warn(e); }
   try { refreshMediaLists(); } catch (e) { console.warn(e); }
   try { requestAnimationFrame(animationLoop); } catch (e) { console.warn(e); }
+  // Tells the start-up guard in index.html that the scripts loaded and ran.
+  window.__studioReady = true;
   loadSourceImage(state.imageSrc, state.imageName).catch((err) => {
     console.warn('[Studio] Fallback image load:', err);
   });

@@ -115,19 +115,48 @@ const server = http.createServer(async (req, res) => {
     // API: save rendered 1080p/30fps MP4 clip directly to media/outputs/
     if (req.method === 'POST' && pathname === '/api/save-video') {
       const rawName = parsedUrl.searchParams.get('name') || `fact-short-${Date.now()}.mp4`;
-      const fileName = sanitizeFileName(rawName, '.mp4');
+      const requestedName = sanitizeFileName(rawName, '.mp4');
       const videoBuffer = await readRequestBody(req, 150 * 1024 * 1024);
+      if (videoBuffer.byteLength === 0) {
+        return sendJson(res, 400, { ok: false, error: 'Empty video payload' });
+      }
       const outDir = path.join(ROOT, 'media', 'outputs');
       fs.mkdirSync(outDir, { recursive: true });
+      // Never silently replace an earlier render: unless the caller asks to overwrite,
+      // an existing name gets a version suffix (-v2, -v3, …).
+      const overwrite = parsedUrl.searchParams.get('overwrite') === '1';
+      let fileName = requestedName;
+      if (!overwrite) {
+        const ext = path.extname(requestedName);
+        const stem = requestedName.slice(0, requestedName.length - ext.length);
+        for (let version = 2; fs.existsSync(path.join(outDir, fileName)); version++) {
+          fileName = `${stem}-v${version}${ext}`;
+        }
+      }
       const targetPath = path.join(outDir, fileName);
 
-      fs.writeFileSync(targetPath, videoBuffer);
+      // Write to a temp file and rename, so a crash mid-write never leaves a truncated video behind.
+      const tempPath = `${targetPath}.part`;
+      fs.writeFileSync(tempPath, videoBuffer);
+      fs.renameSync(tempPath, targetPath);
       return sendJson(res, 200, {
         ok: true,
         fileName,
         sizeBytes: videoBuffer.byteLength,
         url: `/media/outputs/${encodeURIComponent(fileName)}`
       });
+    }
+
+    // API: save a quality report next to its video in media/outputs/
+    if (req.method === 'POST' && pathname === '/api/save-report') {
+      const rawName = parsedUrl.searchParams.get('name') || `report-${Date.now()}.qa.json`;
+      const fileName = sanitizeFileName(rawName.replace(/\.qa\.json$/i, '') + '.json', '.json').replace(/\.json$/, '.qa.json');
+      const body = await readRequestBody(req, 10 * 1024 * 1024);
+      JSON.parse(body.toString('utf8')); // reject anything that is not valid JSON
+      const outDir = path.join(ROOT, 'media', 'outputs');
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(path.join(outDir, fileName), body);
+      return sendJson(res, 200, { ok: true, fileName, url: `/media/outputs/${encodeURIComponent(fileName)}` });
     }
 
     // Static file serving with strict path traversal protection

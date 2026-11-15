@@ -3,6 +3,7 @@
 
 import { FACT_PRESETS, seededRandom } from '../presets/fact-presets.js';
 import { CHARACTER_ACTION_IDS } from '../engine/character.js';
+import { planTimeline } from '../engine/director.js';
 
 export const INHOUSE_MODELS = [
   {
@@ -42,22 +43,234 @@ export const INHOUSE_MODELS = [
   }
 ];
 
+export const DEFAULT_ANALYSIS = Object.freeze({
+  focusX: 0.5,
+  focusY: 0.42,
+  subjectBox: { x0: 0.22, y0: 0.2, x1: 0.78, y1: 0.68 },
+  details: [{ x: 0.5, y: 0.42, strength: 1 }],
+  confidence: 0,
+  avgLuminance: 128,
+  isDarkScene: false,
+  isWarmScene: true,
+  accentColor: '255, 225, 155',
+  analysed: false
+});
+
+function percentile(values, q) {
+  const sorted = Float32Array.from(values).sort();
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))))] || 0;
+}
+
+/** Summed-area table so any box mean costs four lookups. */
+function integralImage(src, w, h) {
+  const out = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) {
+      row += src[y * w + x];
+      out[(y + 1) * (w + 1) + (x + 1)] = out[y * (w + 1) + (x + 1)] + row;
+    }
+  }
+  return out;
+}
+
+function boxMean(integral, w, h, x, y, r) {
+  const x0 = Math.max(0, x - r);
+  const y0 = Math.max(0, y - r);
+  const x1 = Math.min(w, x + r + 1);
+  const y1 = Math.min(h, y + r + 1);
+  const sum =
+    integral[y1 * (w + 1) + x1] - integral[y0 * (w + 1) + x1] - integral[y1 * (w + 1) + x0] + integral[y0 * (w + 1) + x0];
+  return sum / ((x1 - x0) * (y1 - y0));
+}
+
 /**
- * Inspect actual image pixels on a 96x96 offscreen canvas to find:
- * - High-contrast / salient focal point (focusX, focusY)
- * - Average luminance & color warmth
- * - Dominant highlight RGB for particles/lighting
+ * Saliency analysis of an RGBA pixel buffer (pure — unit-testable without a canvas).
+ *
+ * Combines two cues, both normalised robustly:
+ *   • centre–surround colour contrast (a region that differs from its wider surroundings)
+ *   • local edge strength
+ * and returns the main subject's bounding box, a focal point, the strongest
+ * detail points (close-up targets) and the scene's tone. Coordinates are
+ * normalised to the source image (0..1).
+ */
+export function analyzeSaliencyFromPixels(data, w, h) {
+  const n = w * h;
+  if (!data || n === 0 || data.length < n * 4) return { ...DEFAULT_ANALYSIS };
+
+  const R = new Float32Array(n);
+  const G = new Float32Array(n);
+  const B = new Float32Array(n);
+  const L = new Float32Array(n);
+  let totalLum = 0;
+  let totalWarmth = 0;
+  let accR = 0, accG = 0, accB = 0, accCount = 0, opaque = 0;
+
+  for (let i = 0; i < n; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const a = data[i * 4 + 3];
+    R[i] = r;
+    G[i] = g;
+    B[i] = b;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    L[i] = lum;
+    if (a < 16) continue;
+    opaque++;
+    totalLum += lum;
+    totalWarmth += r - b;
+    if (lum > 90 && lum < 245) {
+      accR += r;
+      accG += g;
+      accB += b;
+      accCount++;
+    }
+  }
+  if (opaque === 0) return { ...DEFAULT_ANALYSIS };
+
+  const iR = integralImage(R, w, h);
+  const iG = integralImage(G, w, h);
+  const iB = integralImage(B, w, h);
+  const small = Math.max(1, Math.round(Math.min(w, h) * 0.025));
+  const large = Math.max(4, Math.round(Math.min(w, h) * 0.24));
+
+  const contrast = new Float32Array(n);
+  const edges = new Float32Array(n);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      contrast[i] =
+        (Math.abs(boxMean(iR, w, h, x, y, small) - boxMean(iR, w, h, x, y, large)) +
+          Math.abs(boxMean(iG, w, h, x, y, small) - boxMean(iG, w, h, x, y, large)) +
+          Math.abs(boxMean(iB, w, h, x, y, small) - boxMean(iB, w, h, x, y, large))) / 3;
+      if (x > 0 && x < w - 1 && y > 0 && y < h - 1) {
+        edges[i] = Math.abs(L[i + 1] - L[i - 1]) + Math.abs(L[i + w] - L[i - w]);
+      }
+    }
+  }
+
+  const contrastMax = Math.max(1e-3, percentile(contrast, 0.99));
+  const edgeMax = Math.max(1e-3, percentile(edges, 0.99));
+
+  const sal = new Float32Array(n);
+  let mean = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const nx = (x + 0.5) / w;
+      const ny = (y + 0.5) / h;
+      // Mild centre prior: subjects are rarely pressed against the frame edge.
+      const prior = Math.max(0.45, 1 - 0.6 * Math.hypot(nx - 0.5, ny - 0.45));
+      sal[i] = (0.6 * Math.min(1, contrast[i] / contrastMax) + 0.4 * Math.min(1, edges[i] / edgeMax)) * prior;
+      mean += sal[i];
+    }
+  }
+  mean /= n;
+
+  // Keep only what stands out from the image's own baseline.
+  let mass = 0;
+  const colMass = new Float64Array(w);
+  const rowMass = new Float64Array(h);
+  let cx = 0;
+  let cy = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const v = Math.max(0, sal[i] - mean);
+      sal[i] = v;
+      mass += v;
+      colMass[x] += v;
+      rowMass[y] += v;
+      cx += v * (x + 0.5);
+      cy += v * (y + 0.5);
+    }
+  }
+
+  const tone = {
+    avgLuminance: Math.round(totalLum / opaque),
+    isDarkScene: totalLum / opaque < 95,
+    isWarmScene: totalWarmth / opaque > 15,
+    accentColor:
+      accCount > 0
+        ? `${Math.min(255, Math.round((accR / accCount) * 1.15 + 30))}, ${Math.min(255, Math.round((accG / accCount) * 1.1 + 25))}, ${Math.min(255, Math.round((accB / accCount) * 1.05 + 15))}`
+        : DEFAULT_ANALYSIS.accentColor
+  };
+
+  if (mass < 1e-6) {
+    // A flat image has no subject: fall back to a centred, conservative framing.
+    return { ...DEFAULT_ANALYSIS, ...tone, analysed: true };
+  }
+
+  const quantile = (marginal, q) => {
+    let acc = 0;
+    for (let i = 0; i < marginal.length; i++) {
+      acc += marginal[i];
+      if (acc >= mass * q) return (i + 0.5) / marginal.length;
+    }
+    return 1;
+  };
+  const pad = 0.02;
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+  let box = {
+    x0: clamp01(quantile(colMass, 0.05) - pad),
+    y0: clamp01(quantile(rowMass, 0.05) - pad),
+    x1: clamp01(quantile(colMass, 0.95) + pad),
+    y1: clamp01(quantile(rowMass, 0.95) + pad)
+  };
+  // Never trust a sliver: a subject box narrower than 18% of the frame is widened around its centre.
+  const widen = (lo, hi) => {
+    if (hi - lo >= 0.18) return [lo, hi];
+    const mid = (lo + hi) / 2;
+    const a = clamp01(mid - 0.09);
+    return [a, clamp01(a + 0.18)];
+  };
+  [box.x0, box.x1] = widen(box.x0, box.x1);
+  [box.y0, box.y1] = widen(box.y0, box.y1);
+
+  // Detail points: peaks of the smoothed saliency map, kept apart from each other.
+  const iS = integralImage(sal, w, h);
+  const blurR = Math.max(1, Math.round(Math.min(w, h) * 0.045));
+  const peaks = [];
+  for (let y = 0; y < h; y += 2) {
+    for (let x = 0; x < w; x += 2) {
+      peaks.push({ x: (x + 0.5) / w, y: (y + 0.5) / h, v: boxMean(iS, w, h, x, y, blurR) });
+    }
+  }
+  peaks.sort((a, b) => b.v - a.v);
+  const details = [];
+  for (const p of peaks) {
+    if (details.length >= 3 || p.v < peaks[0].v * 0.45) break;
+    if (details.every((d) => Math.hypot(d.x - p.x, d.y - p.y) > 0.2)) {
+      details.push({ x: Number(p.x.toFixed(3)), y: Number(p.y.toFixed(3)), strength: Number((p.v / peaks[0].v).toFixed(3)) });
+    }
+  }
+
+  const area = (box.x1 - box.x0) * (box.y1 - box.y0);
+  const round = (v) => Number(v.toFixed(3));
+
+  return {
+    // Focal point: the saliency centre of mass, kept away from the frame edge.
+    focusX: round(Math.max(0.15, Math.min(0.85, cx / mass / w))),
+    focusY: round(Math.max(0.15, Math.min(0.82, cy / mass / h))),
+    subjectBox: { x0: round(box.x0), y0: round(box.y0), x1: round(box.x1), y1: round(box.y1) },
+    details: details.length ? details : [{ x: round(cx / mass / w), y: round(cy / mass / h), strength: 1 }],
+    // Diffuse saliency (subject box ≈ whole frame) means "no clear subject".
+    confidence: round(Math.max(0, Math.min(1, 1.15 - area * 1.3))),
+    ...tone,
+    analysed: true
+  };
+}
+
+/**
+ * Analyse the actual image pixels (browser only — needs a canvas):
+ * subject box, focal point, close-up targets, luminance, warmth and accent colour.
+ * Outside a browser (CLI scene generation) it returns neutral defaults; the
+ * renderer re-analyses the real image at render time.
  */
 export function analyzeImagePixels(img) {
   if (typeof document === 'undefined' || !img) {
-    return {
-      focusX: 0.5,
-      focusY: 0.42,
-      avgLuminance: 128,
-      isDarkScene: false,
-      isWarmScene: true,
-      accentColor: '255, 225, 155'
-    };
+    return { ...DEFAULT_ANALYSIS };
   }
 
   const sampleSize = 96;
@@ -69,86 +282,10 @@ export function analyzeImagePixels(img) {
   try {
     ctx.drawImage(img, 0, 0, sampleSize, sampleSize);
     const { data } = ctx.getImageData(0, 0, sampleSize, sampleSize);
-
-    let totalLum = 0;
-    let totalWarmth = 0;
-    let weightSum = 0;
-    let weightedX = 0;
-    let weightedY = 0;
-
-    let accR = 0;
-    let accG = 0;
-    let accB = 0;
-    let accCount = 0;
-
-    const lumAt = (x, y) => {
-      const idx = (y * sampleSize + x) * 4;
-      return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-    };
-
-    for (let y = 1; y < sampleSize - 1; y++) {
-      for (let x = 1; x < sampleSize - 1; x++) {
-        const idx = (y * sampleSize + x) * 4;
-        const r = data[idx];
-        const g = data[idx + 1];
-        const b = data[idx + 2];
-        const a = data[idx + 3];
-        if (a < 16) continue;
-
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        totalLum += lum;
-        totalWarmth += r - b;
-
-        const gx = Math.abs(lumAt(x + 1, y) - lumAt(x - 1, y));
-        const gy = Math.abs(lumAt(x, y + 1) - lumAt(x, y - 1));
-        const edgeStrength = gx + gy;
-
-        const normX = x / sampleSize;
-        const normY = y / sampleSize;
-        const centerBias = 1.0 - 0.65 * Math.hypot(normX - 0.5, normY - 0.42);
-        const saliency = (edgeStrength * 0.75 + lum * 0.25) * Math.max(0.2, centerBias);
-
-        weightSum += saliency;
-        weightedX += normX * saliency;
-        weightedY += normY * saliency;
-
-        if (lum > 90 && lum < 245) {
-          accR += r;
-          accG += g;
-          accB += b;
-          accCount++;
-        }
-      }
-    }
-
-    const pixelCount = (sampleSize - 2) * (sampleSize - 2);
-    const avgLum = totalLum / pixelCount;
-    const avgWarmth = totalWarmth / pixelCount;
-
-    const focusX = weightSum > 0 ? Math.max(0.2, Math.min(0.8, weightedX / weightSum)) : 0.5;
-    const focusY = weightSum > 0 ? Math.max(0.2, Math.min(0.78, weightedY / weightSum)) : 0.42;
-
-    const accentR = accCount > 0 ? Math.min(255, Math.round((accR / accCount) * 1.15 + 30)) : 255;
-    const accentG = accCount > 0 ? Math.min(255, Math.round((accG / accCount) * 1.1 + 25)) : 225;
-    const accentB = accCount > 0 ? Math.min(255, Math.round((accB / accCount) * 1.05 + 15)) : 155;
-
-    return {
-      focusX: Number(focusX.toFixed(3)),
-      focusY: Number(focusY.toFixed(3)),
-      avgLuminance: Math.round(avgLum),
-      isDarkScene: avgLum < 95,
-      isWarmScene: avgWarmth > 15,
-      accentColor: `${accentR}, ${accentG}, ${accentB}`
-    };
+    return analyzeSaliencyFromPixels(data, sampleSize, sampleSize);
   } catch (_) {
-    return {
-      focusX: 0.5,
-      focusY: 0.42,
-      avgLuminance: 128,
-      isDarkScene: false,
-      isWarmScene: true,
-      accentColor: '255, 225, 155'
-    };
+    // Cross-origin (tainted) images cannot be read back: use safe defaults.
+    return { ...DEFAULT_ANALYSIS };
   }
 }
 
@@ -162,13 +299,20 @@ export function parsePromptDirectives(promptText = '') {
   if (p.includes('zoom out') || p.includes('pull back') || p.includes('reveal')) {
     directives.zoomStart = 1.22;
     directives.zoomEnd = 1.02;
+    directives.motionHint = { type: 'reveal' };
   } else if (p.includes('fast') || p.includes('dramatic') || p.includes('intense')) {
     directives.zoomStart = 1.02;
     directives.zoomEnd = 1.28;
+    directives.motionHint = { type: 'push-in', motionScale: 1.3 };
+  } else if (p.includes('slow') || p.includes('calm') || p.includes('gentle') || p.includes('subtle')) {
+    directives.motionHint = { type: 'hold', motionScale: 0.8 };
   }
 
   if (p.includes('pan left')) directives.panX = -0.05;
   if (p.includes('pan right')) directives.panX = 0.05;
+  if (p.includes('pan left') || p.includes('pan right') || p.includes('pan across')) {
+    directives.motionHint = { type: 'pan' };
+  }
   if (p.includes('tilt up')) directives.panY = -0.05;
   if (p.includes('tilt down')) directives.panY = 0.05;
 
@@ -252,8 +396,8 @@ ctx.restore();`;
       return `// Viral Shorts Hook Director (Seed #${variationSeed})
 // Draws an animated subject focus callout ring + bottom retention progress bar
 const { t, progress, width, height, focusX, focusY } = params;
-const cx = width * ${focusX};
-const cy = height * ${focusY};
+const cx = width * focusX;
+const cy = height * focusY;
 const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 3.5);
 const radius = Math.min(width, height) * (0.14 + pulse * 0.025);
 
@@ -320,8 +464,8 @@ ctx.restore();`;
       return `// Sci-Fi Neural Director (Seed #${variationSeed})
 // Draws animated target reticle locked onto the detected subject focal point
 const { t, width, height, focusX, focusY } = params;
-const cx = width * ${focusX};
-const cy = height * ${focusY};
+const cx = width * focusX;
+const cy = height * focusY;
 const r = Math.min(width, height) * 0.11;
 
 ctx.save();
@@ -338,24 +482,45 @@ ctx.restore();`;
 
     case 'saliency-vision':
     default:
-      return `// In-House Saliency Vision v1 (Seed #${variationSeed})
-// Draws a soft anamorphic lens flare centered on the detected subject focal point (${focusX}, ${focusY})
-const { t, width, height } = params;
-const cx = width * ${focusX};
-const cy = height * ${focusY};
-const breathe = 0.85 + 0.15 * Math.sin(t * Math.PI * 1.5);
+      return `// In-House Saliency Vision v2 (Seed #${variationSeed})
+// Soft anamorphic glow on the detected focal point. Drawn as a scaled radial
+// gradient (an ellipse that fades to nothing) — never a hard-edged rectangle.
+const { t, width, height, focusX, focusY } = params;
+const cx = width * focusX;
+const cy = height * focusY;
+const breathe = 0.9 + 0.1 * Math.sin(t * Math.PI * 1.2);
+const radius = width * 0.3 * breathe;
 
 ctx.save();
-const flareW = width * 0.55 * breathe;
-const flareH = Math.max(6, height * 0.008);
-const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, flareW * 0.5);
-grad.addColorStop(0, 'rgba(${accentColor}, 0.26)');
-grad.addColorStop(0.5, 'rgba(${accentColor}, 0.08)');
+ctx.translate(cx, cy);
+ctx.scale(1, 0.16);
+const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+grad.addColorStop(0, 'rgba(${accentColor}, 0.16)');
+grad.addColorStop(0.45, 'rgba(${accentColor}, 0.06)');
 grad.addColorStop(1, 'rgba(${accentColor}, 0)');
 ctx.fillStyle = grad;
-ctx.fillRect(cx - flareW * 0.5, cy - flareH * 3, flareW, flareH * 6);
+ctx.beginPath();
+ctx.arc(0, 0, radius, 0, Math.PI * 2);
+ctx.fill();
 ctx.restore();`;
   }
+}
+
+/**
+ * The director's timeline for a scene: caption cues, shots cut on phrase
+ * boundaries, transitions and emphasis beats. Deterministic for a given
+ * text / model / seed / prompt. `wordTimings` ([{ start, end }] per word, in
+ * seconds) switches captions from estimated timing to real word sync.
+ */
+export function planSceneTimeline({ factSubtitle = '', duration = 4, modelId = 'saliency-vision', variationSeed = 1, motionPrompt = '', wordTimings = null }) {
+  return planTimeline({
+    narration: factSubtitle,
+    duration,
+    modelId,
+    seed: variationSeed,
+    wordTimings,
+    motionHint: parsePromptDirectives(motionPrompt).motionHint || null
+  });
 }
 
 /**
@@ -375,18 +540,13 @@ export function buildScenePlan({
   variationSeed = 1,
   autoSelectPreset = false,
   characterAction = null,
-  characterEnabled = true
+  characterEnabled = true,
+  cameraMode = 'director',
+  captionMode = 'phrases',
+  effectIntensity = 1,
+  wordTimings = null
 }) {
-  const analysis = img
-    ? analyzeImagePixels(img)
-    : {
-        focusX: 0.5,
-        focusY: 0.42,
-        avgLuminance: 128,
-        isDarkScene: false,
-        isWarmScene: true,
-        accentColor: '255, 225, 155'
-      };
+  const analysis = img ? analyzeImagePixels(img) : { ...DEFAULT_ANALYSIS };
 
   const modelObj = INHOUSE_MODELS.find((m) => m.id === modelId) || INHOUSE_MODELS[0];
   const promptDirectives = parsePromptDirectives(motionPrompt);
@@ -471,9 +631,18 @@ export function buildScenePlan({
     promptDirectives
   });
 
+  const timeline = planSceneTimeline({ factSubtitle, duration, modelId, variationSeed, motionPrompt, wordTimings });
+
   return {
-    schemaVersion: '1.0',
+    schemaVersion: '2.0',
     engine: 'inhouse-30fps-1080p',
+    // 'director' = shot timeline + saliency-safe framing (default).
+    // 'manual'   = the classic single move from zoomStart/zoomEnd/panX/panY/rotateDeg.
+    cameraMode,
+    // 'phrases' = animated phrase captions from the timeline; 'static' = one fixed card.
+    captionMode,
+    // Master strength of atmosphere/light effects (0 = none, 1 = default, max 1.5).
+    effectIntensity,
     modelId,
     variationSeed,
     presetId: chosenPresetId,
@@ -499,6 +668,12 @@ export function buildScenePlan({
     factSubtitle,
     motionPrompt,
     generatedCustomCode,
+    // Saliency is only stored when it came from real pixels; otherwise the
+    // renderer analyses the actual image when it prepares the scene.
+    saliency: analysis.analysed
+      ? { subjectBox: analysis.subjectBox, details: analysis.details, confidence: analysis.confidence }
+      : null,
+    timeline,
     analysisSummary: {
       avgLuminance: analysis.avgLuminance,
       isDarkScene: analysis.isDarkScene,

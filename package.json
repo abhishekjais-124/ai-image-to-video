@@ -1,13 +1,18 @@
 {
   "name": "ai-image-to-video",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "In-House AI Image-to-Video Studio for Fact Shorts (1080p minimum, locked 30.000 FPS CFR H.264 MP4, 3-5s clips, Multi-Model Variation, Batch Mode, Procedural Character Animation, zero API keys, compatible with Antigravity, Claude Desktop, and Codex)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "generate": "node scripts/generate-scene.js"
+    "generate": "node scripts/generate-scene.js",
+    "render": "node scripts/render.js",
+    "inspect": "node scripts/inspect.js",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.test.js\"",
+    "test:all": "node --test --test-concurrency=1 \"tests/unit/*.test.js\" \"tests/e2e/*.test.js\""
   },
   "repository": {
     "type": "git",
