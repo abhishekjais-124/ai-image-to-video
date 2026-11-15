@@ -126,8 +126,10 @@ function escapeHtml(value) {
 }
 
 function setToolsOpen(open) {
-  document.body.classList.toggle('tools-open', open);
-  btnTogglePanel.setAttribute('aria-pressed', String(open));
+  document.body.classList.toggle('tools-open', !!open);
+  if (btnTogglePanel) {
+    btnTogglePanel.setAttribute('aria-pressed', String(!!open));
+  }
   try {
     localStorage.setItem('studio.toolsOpen', open ? '1' : '0');
   } catch (_) {
@@ -903,14 +905,20 @@ function switchRightTab(tab) {
   }
 }
 
+function on(el, event, handler) {
+  if (el && typeof el.addEventListener === 'function') {
+    el.addEventListener(event, handler);
+  }
+}
+
 function bindEvents() {
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('dragover', (e) => {
+  on(dropzone, 'click', () => fileInput && fileInput.click());
+  on(dropzone, 'dragover', (e) => {
     e.preventDefault();
     dropzone.classList.add('dragover');
   });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', (e) => {
+  on(dropzone, 'dragleave', () => dropzone.classList.remove('dragover'));
+  on(dropzone, 'drop', (e) => {
     e.preventDefault();
     dropzone.classList.remove('dragover');
     const files = Array.from(e.dataTransfer?.files || []);
@@ -921,18 +929,18 @@ function bindEvents() {
       switchRightTab('batch');
     }
   });
-  fileInput.addEventListener('change', (e) => {
+  on(fileInput, 'change', (e) => {
     const file = e.target.files?.[0];
     if (file) handleUploadedFile(file);
   });
 
-  sampleSelectEl.addEventListener('change', () => {
+  on(sampleSelectEl, 'change', () => {
     const val = sampleSelectEl.value;
     if (!val) return;
     loadSourceImage(val, val.split('/').pop());
   });
 
-  btnShorts.addEventListener('click', () => {
+  on(btnShorts, 'click', () => {
     state.aspectRatio = '9:16';
     btnShorts.classList.add('active');
     btnLandscape.classList.remove('active');
@@ -941,7 +949,7 @@ function bindEvents() {
     rebuildScenePlanFromModel();
   });
 
-  btnLandscape.addEventListener('click', () => {
+  on(btnLandscape, 'click', () => {
     state.aspectRatio = '16:9';
     btnLandscape.classList.add('active');
     btnShorts.classList.remove('active');
@@ -950,70 +958,70 @@ function bindEvents() {
     rebuildScenePlanFromModel();
   });
 
-  selResolution.addEventListener('change', () => {
+  on(selResolution, 'change', () => {
     state.resolution = selResolution.value;
     updateStageDisplayGeometry();
     updateResolutionCheck();
     rebuildScenePlanFromModel();
   });
 
-  selQuality.addEventListener('change', () => {
+  on(selQuality, 'change', () => {
     state.renderQuality = selQuality.value;
     const q = RENDER_QUALITIES.find((x) => x.id === state.renderQuality);
     if (q && qualityHintEl) qualityHintEl.textContent = q.description + (state.renderQuality === 'cinematic' ? ' The stage shows every frame live as it renders.' : '');
   });
 
-  selDuration.addEventListener('change', () => {
+  on(selDuration, 'change', () => {
     state.duration = Number(selDuration.value);
     state.currentFrame = 0;
     updateStageDisplayGeometry();
     rebuildScenePlanFromModel();
   });
 
-  selModel.addEventListener('change', () => {
+  on(selModel, 'change', () => {
     state.modelId = selModel.value;
     state.variationSeed = 1;
     updateDescriptions();
     rebuildScenePlanFromModel({ autoSelectPreset: true });
   });
 
-  selPreset.addEventListener('change', () => {
+  on(selPreset, 'change', () => {
     state.presetId = selPreset.value;
     updateDescriptions();
     rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
-  motionPromptInput.addEventListener('input', () => {
+  on(motionPromptInput, 'input', () => {
     state.motionPrompt = motionPromptInput.value;
     rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
-  factTitleInput.addEventListener('input', () => {
+  on(factTitleInput, 'input', () => {
     state.factTitle = factTitleInput.value;
     state.scenePlan.factTitle = state.factTitle;
     if (state.editorTab === 'json') syncEditorContent();
     renderCurrentFrame();
   });
 
-  factSubtitleInput.addEventListener('input', () => {
+  on(factSubtitleInput, 'input', () => {
     state.factSubtitle = factSubtitleInput.value;
     state.scenePlan.factSubtitle = state.factSubtitle;
     if (state.editorTab === 'json') syncEditorContent();
     renderCurrentFrame();
   });
 
-  selCharacterAction.addEventListener('change', () => {
+  on(selCharacterAction, 'change', () => {
     state.characterAction = selCharacterAction.value;
     rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
-  chkCharacter.addEventListener('change', () => {
+  on(chkCharacter, 'change', () => {
     state.characterEnabled = chkCharacter.checked;
     rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
-  btnCharacterUpload.addEventListener('click', () => characterFileInput.click());
-  characterFileInput.addEventListener('change', (e) => {
+  on(btnCharacterUpload, 'click', () => characterFileInput && characterFileInput.click());
+  on(characterFileInput, 'change', (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -1022,69 +1030,74 @@ function bindEvents() {
         .then((img) => {
           state.characterImgElement = img;
           state.characterImgName = file.name;
-          characterFileNameEl.textContent = `Cutout: ${file.name} — it walks instead of the drawn presenter`;
+          if (characterFileNameEl) characterFileNameEl.textContent = `Cutout: ${file.name} — it walks instead of the drawn presenter`;
           renderCurrentFrame();
         })
         .catch(() => {
-          characterFileNameEl.textContent = `Could not load ${file.name}`;
+          if (characterFileNameEl) characterFileNameEl.textContent = `Could not load ${file.name}`;
         });
     };
     reader.readAsDataURL(file);
   });
 
-  btnVariation.addEventListener('click', () => {
+  on(btnVariation, 'click', () => {
     state.variationSeed += 1;
     rebuildScenePlanFromModel({ autoSelectPreset: false });
   });
 
-  btnRegeneratePlan.addEventListener('click', () => {
+  on(btnRegeneratePlan, 'click', () => {
     state.variationSeed = 1;
     rebuildScenePlanFromModel({ autoSelectPreset: true });
   });
 
-  selSavedScene.addEventListener('change', () => {
+  on(selSavedScene, 'change', () => {
     if (selSavedScene.value) {
       loadSavedSceneFromUrl(selSavedScene.value);
     }
   });
 
-  btnPlayPause.addEventListener('click', () => {
+  on(btnPlayPause, 'click', () => {
     state.isPlaying = !state.isPlaying;
     state.lastTickTime = 0;
     setPlayButtonState();
   });
 
-  frameScrubber.addEventListener('input', () => {
+  on(frameScrubber, 'input', () => {
     state.isPlaying = false;
     setPlayButtonState();
     state.currentFrame = Number(frameScrubber.value);
     renderCurrentFrame();
   });
 
-  btnExportMp4.addEventListener('click', () => {
+  on(btnExportMp4, 'click', () => {
     handleExportSingleClip();
   });
 
-  btnTogglePanel.addEventListener('click', () => {
+  on(btnTogglePanel, 'click', () => {
     setToolsOpen(!document.body.classList.contains('tools-open'));
   });
 
-  tabJsonBtn.addEventListener('click', () => switchRightTab('json'));
-  tabJsBtn.addEventListener('click', () => switchRightTab('js'));
-  tabBatchBtn.addEventListener('click', () => switchRightTab('batch'));
+  const btnCloseTools = document.getElementById('btnCloseTools');
+  const toolsBackdrop = document.getElementById('toolsBackdrop');
+  on(btnCloseTools, 'click', () => setToolsOpen(false));
+  on(toolsBackdrop, 'click', () => setToolsOpen(false));
 
-  codeEditor.addEventListener('input', () => applyEditorChanges());
-  btnApplyCode.addEventListener('click', () => applyEditorChanges());
-  btnSaveScene.addEventListener('click', () => saveSceneToDisk());
+  on(tabJsonBtn, 'click', () => switchRightTab('json'));
+  on(tabJsBtn, 'click', () => switchRightTab('js'));
+  on(tabBatchBtn, 'click', () => switchRightTab('batch'));
+
+  on(codeEditor, 'input', () => applyEditorChanges());
+  on(btnApplyCode, 'click', () => applyEditorChanges());
+  on(btnSaveScene, 'click', () => saveSceneToDisk());
 
   // Batch Mode Controls
-  btnAddBatchFiles.addEventListener('click', () => batchFileInput.click());
-  batchFileInput.addEventListener('change', (e) => {
+  on(btnAddBatchFiles, 'click', () => batchFileInput && batchFileInput.click());
+  on(batchFileInput, 'change', (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length) handleMultipleBatchFiles(files);
   });
 
-  btnAddSampleBatch.addEventListener('click', () => {
+  on(btnAddSampleBatch, 'click', () => {
     addItemToBatchQueue({
       name: 'sample-ancient-pyramid.svg',
       src: BUILTIN_SAMPLES.pyramid,
@@ -1103,7 +1116,7 @@ function bindEvents() {
     });
   });
 
-  btnRunBatch.addEventListener('click', () => {
+  on(btnRunBatch, 'click', () => {
     runBatchExport();
   });
 }
@@ -1111,7 +1124,7 @@ function bindEvents() {
 function handleUploadedFile(file) {
   const reader = new FileReader();
   reader.onload = (ev) => {
-    sampleSelectEl.value = '';
+    if (sampleSelectEl) sampleSelectEl.value = '';
     loadSourceImage(ev.target.result, file.name);
   };
   reader.readAsDataURL(file);
@@ -1131,18 +1144,31 @@ function handleMultipleBatchFiles(files) {
   });
 }
 
-// Initialize Studio — always start animationLoop even if image loads via fallback
-let toolsOpenSaved = false;
-try {
-  toolsOpenSaved = localStorage.getItem('studio.toolsOpen') === '1';
-} catch (_) {
-  // Storage unavailable
+function initStudio() {
+  try {
+    // Only auto-open tools on wide desktop screens (> 1180px)
+    let toolsOpenSaved = false;
+    try {
+      toolsOpenSaved = window.innerWidth > 1180 && localStorage.getItem('studio.toolsOpen') === '1';
+    } catch (_) {}
+    setToolsOpen(toolsOpenSaved);
+  } catch (e) {
+    console.warn('[Studio] setToolsOpen error:', e);
+  }
+
+  try { setPlayButtonState(); } catch (e) { console.warn(e); }
+  try { initDropdowns(); } catch (e) { console.warn(e); }
+  try { updateStageDisplayGeometry(); } catch (e) { console.warn(e); }
+  try { bindEvents(); } catch (e) { console.warn(e); }
+  try { refreshMediaLists(); } catch (e) { console.warn(e); }
+  try { requestAnimationFrame(animationLoop); } catch (e) { console.warn(e); }
+  loadSourceImage(state.imageSrc, state.imageName).catch((err) => {
+    console.warn('[Studio] Fallback image load:', err);
+  });
 }
-setToolsOpen(toolsOpenSaved);
-setPlayButtonState();
-initDropdowns();
-updateStageDisplayGeometry();
-bindEvents();
-refreshMediaLists();
-requestAnimationFrame(animationLoop);
-loadSourceImage(state.imageSrc, state.imageName).catch(() => {});
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initStudio);
+} else {
+  initStudio();
+}

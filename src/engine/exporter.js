@@ -115,14 +115,15 @@ export function makeFrameRenderer({
     }
     const samples = 4;
     accumCtx.save();
+    accumCtx.clearRect(0, 0, accumCanvas.width, accumCanvas.height);
+    accumCtx.fillStyle = '#000';
+    accumCtx.fillRect(0, 0, accumCanvas.width, accumCanvas.height);
     // Additive accumulation: drawing with globalAlpha 0.25 four times
     // onto black does NOT sum to 1 — it converges to 1 - 0.75^4 = 0.68,
     // which made every cinematic frame 32% too dark. 'lighter' adds
     // 0.25 x 4 = 1.0 exactly.
     accumCtx.globalCompositeOperation = 'lighter';
     accumCtx.globalAlpha = 1 / samples;
-    accumCtx.fillStyle = '#000';
-    accumCtx.fillRect(0, 0, accumCanvas.width, accumCanvas.height);
     // Half-frame shutter (1/60s): a full-frame shutter at walk speed
     // ghosts the character into 4 separate copies. Half-frame gives a
     // natural smear on fast limbs and almost none when he is standing.

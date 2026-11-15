@@ -412,12 +412,27 @@
     ::-webkit-scrollbar-track { background: transparent; }
 
     /* ---------- Narrow screens ---------- */
+    .tools-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      z-index: 9;
+    }
+    body.tools-open .tools-backdrop {
+      display: block;
+    }
+    @media (min-width: 1181px) {
+      .tools-backdrop { display: none !important; }
+    }
+
     @media (max-width: 1180px) {
       body.tools-open .workspace { grid-template-columns: 312px minmax(0, 1fr); }
       .tools {
         position: fixed;
         top: 52px; right: 0; bottom: 0;
-        width: min(400px, 100vw);
+        width: min(420px, 100vw);
         z-index: 10;
         box-shadow: -24px 0 48px rgba(0, 0, 0, 0.6);
       }
@@ -576,13 +591,21 @@
       </div>
     </section>
 
+    <!-- Backdrop for tools panel on narrow screens -->
+    <div class="tools-backdrop" id="toolsBackdrop" aria-hidden="true"></div>
+
     <!-- Code & Batch -->
     <aside class="tools">
       <div class="tools-head">
-        <div class="segmented">
-          <button class="active" id="tabJsonBtn">Plan</button>
-          <button id="tabJsBtn">Code</button>
-          <button id="tabBatchBtn">Batch</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div class="segmented" style="flex:1;">
+            <button class="active" id="tabJsonBtn">Plan</button>
+            <button id="tabJsBtn">Code</button>
+            <button id="tabBatchBtn">Batch</button>
+          </div>
+          <button class="icon-btn" id="btnCloseTools" aria-label="Close panel" title="Close panel" style="flex:none;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4L4 12"/></svg>
+          </button>
         </div>
       </div>
 
@@ -621,6 +644,6 @@
     </aside>
   </main>
 
-  <script type="module" src="./ui/app.js?v=1.5.0"></script>
+  <script type="module" src="./ui/app.js?v=1.5.2"></script>
 </body>
 </html>
