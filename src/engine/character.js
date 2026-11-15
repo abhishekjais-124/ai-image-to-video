@@ -72,7 +72,10 @@ export function getCharacterPose(t, {
   action = 'walk-point',
   seed = 1,
   focusX = 0.5,
-  focusY = 0.42
+  focusY = 0.42,
+  standX = null,
+  heightFrac = 0.42,
+  feetYFrac = 0.74
 } = {}) {
   const progress = clamp01(t / Math.max(0.1, duration));
   const enterEnd = 0.34; // walk-in finishes at 34% of the clip — a 0.84s walk-in was a run, not a walk
@@ -82,8 +85,10 @@ export function getCharacterPose(t, {
   // Presenter stands to the side of the subject and points across at it,
   // so pointing actually means something. If the subject is on the right,
   // the presenter stands on the left, and vice versa.
-  const standSide = focusX >= 0.5 ? 0.36 : 0.64; // far enough in that a raised left hand stays in frame
-  const walkFromX = focusX >= 0.5 ? -0.08 : 1.08; // just off the edge, not a full frame away — a 560px sprint in 1s read as a run, and he was invisible for the first half-second
+  // `standX` comes from planCharacterPlacement (beside the subject, never on it).
+  // Without it the classic position is used.
+  const standSide = Number.isFinite(standX) ? standX : focusX >= 0.5 ? 0.36 : 0.64; // far enough in that a raised left hand stays in frame
+  const walkFromX = standSide < 0.5 ? -0.08 : 1.08; // just off the nearest edge, not a full frame away — a 560px sprint in 1s read as a run, and he was invisible for the first half-second
   // Natural walk-in: smoothstep (slow start, slow stop — a real person
   // does not arrive at full speed and halt instantly) plus a small
   // damped settle bounce in the first 0.4s after planting the feet.
@@ -96,8 +101,8 @@ export function getCharacterPose(t, {
   // Small idle sway once planted, layered so it never looks looped.
   const swayX = phase === 'enter' ? 0 : layeredSine(t, 0.22, 0.37, 1, 0.5, seed) * width * 0.003;
 
-  const feetY = height * 0.74;
-  const charH = height * 0.42;
+  const feetY = height * feetYFrac;
+  const charH = height * heightFrac;
   const scale = charH / 420; // local drawing units: character is 420 tall
 
   // Walk cycle: ~1.7 steps/sec (a relaxed walk, not a march), legs swing
@@ -461,10 +466,10 @@ export function renderCharacter(ctx, opts = {}) {
  * position / squash-and-stretch / tilt, which is the honest limit of
  * a single PNG. For articulated limbs, use the procedural presenter.
  */
-export function renderCharacterCutout(ctx, { img, t = 0, duration = 4, width = 1080, height = 1920, action = 'walk-point', seed = 1, focusX = 0.5, focusY = 0.42 } = {}) {
+export function renderCharacterCutout(ctx, { img, t = 0, duration = 4, width = 1080, height = 1920, action = 'walk-point', seed = 1, focusX = 0.5, focusY = 0.42, standX = null, heightFrac = 0.42, feetYFrac = 0.74 } = {}) {
   if (!img) return null;
-  const pose = getCharacterPose(t, { duration, width, height, action, seed, focusX, focusY });
-  const targetH = height * 0.42;
+  const pose = getCharacterPose(t, { duration, width, height, action, seed, focusX, focusY, standX, heightFrac, feetYFrac });
+  const targetH = pose.charH;
   const imgW = Number(img.naturalWidth || img.width || 1);
   const imgH = Number(img.naturalHeight || img.height || 1);
   const targetW = targetH * (imgW / imgH);
@@ -485,4 +490,68 @@ export function renderCharacterCutout(ctx, { img, t = 0, duration = 4, width = 1
   ctx.drawImage(img, -targetW / 2, -targetH, targetW, targetH);
   ctx.restore();
   return pose;
+}
+
+/** Canvas-normalised box the presenter's body occupies once standing (arms excluded — they are thin). */
+export function characterBodyBox({ standX, heightFrac, feetYFrac, width, height }) {
+  const bodyW = (0.34 * heightFrac * height) / width;
+  return {
+    x0: standX - bodyW / 2,
+    y0: feetYFrac - heightFrac * 1.02,
+    x1: standX + bodyW / 2,
+    y1: feetYFrac + 0.01
+  };
+}
+
+/**
+ * Decide where the presenter stands and how tall they are so they explain the
+ * subject without covering it.
+ *
+ * `subjectBoxes` are the subject's canvas-normalised boxes sampled across the
+ * clip (the camera moves, so the subject moves on screen). Each candidate
+ * (left/right edge × three sizes) is scored by how much of the subject the body
+ * would cover on average; the largest presenter that stays under `maxOcclusion`
+ * wins. If nothing qualifies, the least-covering candidate is returned with
+ * `acceptable: false` so the quality pass can decide what to do.
+ */
+export function planCharacterPlacement({
+  subjectBoxes = [],
+  width = 1080,
+  height = 1920,
+  captionTop = 0.74,
+  maxOcclusion = 0.1,
+  sizes = [0.33, 0.28, 0.23]
+}) {
+  const feetYFrac = Math.min(0.74, captionTop - 0.025);
+  const area = (b) => Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0);
+  const overlap = (a, b) =>
+    Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+
+  const candidates = [];
+  for (const heightFrac of sizes) {
+    const bodyW = (0.34 * heightFrac * height) / width;
+    // Leave room for a gesturing arm between the body and the frame edge.
+    const inset = 0.035 + bodyW * 0.75;
+    for (const side of ['left', 'right']) {
+      const standX = side === 'left' ? inset : 1 - inset;
+      const body = characterBodyBox({ standX, heightFrac, feetYFrac, width, height });
+      let occlusion = 0;
+      for (const sb of subjectBoxes) {
+        const visible = { x0: Math.max(0, sb.x0), y0: Math.max(0, sb.y0), x1: Math.min(1, sb.x1), y1: Math.min(1, sb.y1) };
+        const a = area(visible);
+        if (a > 0) occlusion += overlap(body, visible) / a;
+      }
+      occlusion = subjectBoxes.length ? occlusion / subjectBoxes.length : 0;
+      candidates.push({ side, standX, heightFrac, feetYFrac, occlusion: Number(occlusion.toFixed(4)) });
+    }
+  }
+
+  const acceptable = candidates.filter((c) => c.occlusion <= maxOcclusion);
+  if (acceptable.length) {
+    // Largest size first; within a size, the side that covers less.
+    acceptable.sort((a, b) => b.heightFrac - a.heightFrac || a.occlusion - b.occlusion);
+    return { ...acceptable[0], acceptable: true };
+  }
+  candidates.sort((a, b) => a.occlusion - b.occlusion);
+  return { ...candidates[0], acceptable: false };
 }
