@@ -156,7 +156,7 @@ const server = http.createServer(async (req, res) => {
 
       res.writeHead(200, {
         'Content-Type': contentType,
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-store, no-cache, must-revalidate'
       });
       fs.createReadStream(resolvedPath).pipe(res);
     });

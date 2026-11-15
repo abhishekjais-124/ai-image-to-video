@@ -80,7 +80,10 @@ function setToolsOpen(open) {
 
 function setPlayButtonState() {
   btnPlayPause.dataset.playing = String(state.isPlaying);
-  btnPlayPause.setAttribute('aria-label', state.isPlaying ? 'Pause' : 'Play');
+  const label = state.isPlaying ? 'Pause' : 'Play';
+  btnPlayPause.setAttribute('aria-label', label);
+  const labelEl = document.getElementById('playBtnLabel');
+  if (labelEl) labelEl.textContent = label;
 }
 
 const btnShorts = document.getElementById('btnShorts');
