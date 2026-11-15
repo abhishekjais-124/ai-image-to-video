@@ -3,527 +3,576 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Image-to-Video Studio • 1080p / 30 FPS Fact Shorts MP4</title>
+  <title>AI Image-to-Video Studio</title>
   <style>
     :root {
-      --bg: #080a0f;
-      --panel: #111520;
-      --panel-alt: #0c0f17;
-      --border: #1f2737;
-      --accent: #6366f1;
-      --accent-hover: #4f46e5;
-      --danger: #dc2626;
-      --danger-hover: #b91c1c;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --ok: #10b981;
-      --warn: #f59e0b;
+      --bg: #09090b;
+      --surface: #101012;
+      --surface-2: #17171a;
+      --surface-3: #1e1e22;
+      --line: rgba(255, 255, 255, 0.07);
+      --line-strong: rgba(255, 255, 255, 0.13);
+      --text: #ededef;
+      --muted: #8b8b93;
+      --faint: #5c5c66;
+      --accent: #e5c07b;
+      --accent-soft: rgba(229, 192, 123, 0.12);
+      --ok: #7fd4a8;
+      --warn: #e8b35a;
+      --err: #f08a8a;
+      --radius: 10px;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color-scheme: dark;
     }
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
 
-    header {
-      padding: 14px 26px;
-      background: #0c1018;
-      border-bottom: 1px solid var(--border);
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    button, select, input, textarea { font: inherit; color: inherit; }
+    a { color: inherit; }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      height: 52px;
+      flex: none;
+      display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 16px;
-      flex-wrap: wrap;
+      padding: 0 16px 0 18px;
+      border-bottom: 1px solid var(--line);
     }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .brand h1 { font-size: 1.18rem; font-weight: 700; letter-spacing: -0.3px; }
-    .pill {
-      font-size: 0.73rem;
-      background: rgba(99, 102, 241, 0.16);
-      color: #a5b4fc;
-      padding: 4px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(99, 102, 241, 0.38);
-      font-weight: 600;
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark {
+      width: 22px; height: 22px; border-radius: 6px; flex: none;
+      background: linear-gradient(145deg, #f3d9a4, #c9995a);
+      display: grid; place-items: center;
     }
-    .header-right { display: flex; align-items: center; gap: 14px; }
-    .spec-badge {
-      font-size: 0.78rem;
-      background: #161d2c;
-      border: 1px solid var(--border);
-      color: #cbd5e1;
-      padding: 5px 12px;
-      border-radius: 6px;
+    .brand-mark svg { width: 10px; height: 10px; fill: #1a1408; margin-left: 1px; }
+    .brand-name { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .spec {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--faint);
+      margin-right: 8px;
+      white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
-    .header-right a { color: var(--text-muted); text-decoration: none; font-size: 0.85rem; }
-    .header-right a:hover { color: var(--text); }
 
-    .main-layout {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 390px 1fr 450px;
-      gap: 18px;
-      padding: 18px 22px;
-      max-width: 1780px;
-      margin: 0 auto;
-      width: 100%;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 17px;
-      display: flex;
-      flex-direction: column;
-      gap: 11px;
-    }
-    .panel-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .form-group { display: flex; flex-direction: column; gap: 5px; }
-    label {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 0.5px;
-    }
-    .hint { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
-
-    select, input[type="text"], textarea {
-      background: var(--panel-alt);
-      border: 1px solid var(--border);
+    /* ---------- Buttons ---------- */
+    .btn {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      background: var(--surface-2);
       color: var(--text);
-      padding: 8px 10px;
-      border-radius: 8px;
-      font-size: 0.84rem;
-      outline: none;
-      width: 100%;
-    }
-    select:focus, input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
-
-    .radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .radio-btn {
-      border: 1px solid var(--border);
-      background: var(--panel-alt);
-      padding: 8px 10px;
-      border-radius: 8px;
-      text-align: center;
+      font-size: 12.5px;
+      font-weight: 500;
       cursor: pointer;
-      font-size: 0.82rem;
-      user-select: none;
-      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
     }
-    .radio-btn.active {
-      border-color: var(--accent);
-      background: rgba(99, 102, 241, 0.18);
-      color: #fff;
+    .btn:hover { background: var(--surface-3); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn svg { width: 14px; height: 14px; flex: none; }
+    .btn-primary {
+      background: #f4f4f5;
+      border-color: #f4f4f5;
+      color: #0b0b0c;
       font-weight: 600;
     }
+    .btn-primary:hover { background: #ffffff; }
+    .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+    .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+    .btn-ghost[aria-pressed="true"] { background: var(--surface-2); color: var(--text); border-color: var(--line); }
+    .btn-block { width: 100%; }
+    .btn .seed { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: grid; place-items: center;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+    }
+    .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+    .icon-btn svg { width: 16px; height: 16px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    .dropzone {
-      border: 1.5px dashed #334155;
-      border-radius: 10px;
-      padding: 12px;
-      text-align: center;
+    /* ---------- Layout ---------- */
+    .workspace {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 312px minmax(0, 1fr);
+    }
+    body.tools-open .workspace { grid-template-columns: 312px minmax(0, 1fr) 400px; }
+    .sidebar, .tools {
+      min-height: 0;
+      overflow-y: auto;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar { border-right: 1px solid var(--line); }
+    .tools { border-left: 1px solid var(--line); display: none; }
+    body.tools-open .tools { display: flex; }
+
+    .section { padding: 16px 18px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .section-title, label.section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .field { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 10px; }
+    .field > label { font-size: 12.5px; color: var(--muted); }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hint { font-size: 12px; color: var(--muted); }
+    .sidebar-foot { margin-top: auto; padding: 14px 18px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+
+    /* ---------- Inputs ---------- */
+    select, input[type="text"], textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 12.5px;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 28px;
       cursor: pointer;
-      background: var(--panel-alt);
-      transition: border-color 0.2s, background 0.2s;
+      text-overflow: ellipsis;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238b8b93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
     }
-    .dropzone:hover, .dropzone.dragover {
-      border-color: var(--accent);
-      background: rgba(99, 102, 241, 0.08);
+    select:hover, input[type="text"]:hover, textarea:hover { border-color: var(--line-strong); }
+    select:focus, input[type="text"]:focus, textarea:focus { border-color: var(--accent); background-color: var(--surface-3); }
+    ::placeholder { color: var(--faint); }
+    textarea { resize: vertical; line-height: 1.5; }
+    .select-quiet {
+      width: auto;
+      background-color: transparent;
+      border-color: transparent;
+      color: var(--muted);
+      padding: 3px 22px 3px 6px;
+      font-size: 12px;
+      background-position: right 6px center;
     }
-    .dropzone input { display: none; }
-    .dropzone p { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; word-break: break-all; }
 
-    .res-banner {
-      display: none;
-      font-size: 0.74rem;
-      padding: 7px 9px;
+    .segmented {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      gap: 2px;
+      padding: 2px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+    .segmented > * {
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border: 0;
       border-radius: 7px;
-      line-height: 1.35;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
     }
-    .res-banner.ok {
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.35);
-      color: #6ee7b7;
-    }
-    .res-banner.warn {
-      background: rgba(245, 158, 11, 0.14);
-      border: 1px solid rgba(245, 158, 11, 0.45);
-      color: #fcd34d;
-    }
+    .segmented > *:hover { color: var(--text); }
+    .segmented > .active { background: var(--surface-3); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong); }
 
-    /* Stage Column */
-    .stage-panel {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      background: #07090e;
-      padding: 18px;
-    }
-    .stage-viewport {
-      position: relative;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 22px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
-      background: #000;
-      transition: width 0.25s ease, height 0.25s ease;
-    }
-    #stageCanvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
-    .timeline-bar {
-      width: 100%;
-      background: #0d111a;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 9px;
-    }
-    .timeline-controls {
+    /* ---------- Source image ---------- */
+    .dropzone {
       display: flex;
       align-items: center;
       gap: 12px;
-    }
-    .timeline-controls input[type="range"] {
-      flex: 1;
-      accent-color: var(--accent);
+      padding: 8px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius);
       cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
     }
-    .timeline-readout {
-      font-size: 0.76rem;
-      color: var(--text-muted);
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+    .dropzone input { display: none; }
+    .thumb {
+      width: 40px; height: 52px; flex: none;
+      border-radius: 6px;
+      object-fit: cover;
+      background: var(--surface-3);
+      box-shadow: 0 0 0 1px var(--line-strong);
+    }
+    .dropzone-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .file-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .res-banner {
+      display: none;
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+    .res-banner.ok { border-color: rgba(127, 212, 168, 0.25); color: var(--ok); }
+    .res-banner.warn { border-color: rgba(232, 179, 90, 0.3); color: var(--warn); }
+    .res-banner a { color: inherit; text-underline-offset: 2px; }
+    .res-banner .meta { color: var(--muted); }
+
+    /* ---------- Stage ---------- */
+    .stage {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(120% 80% at 50% 30%, #131316 0%, var(--bg) 70%);
+    }
+    .stage-area {
+      flex: 1;
+      min-height: 0;
+      padding: 28px 28px 18px;
+      display: grid;
+      place-items: center;
+      container-type: size;
+    }
+    .stage-viewport {
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 40px 80px -24px rgba(0, 0, 0, 0.9), 0 0 0 1px var(--line-strong);
+    }
+    .stage-viewport[data-aspect="9:16"] { aspect-ratio: 9 / 16; height: min(100cqh, 780px, calc(100cqw * 16 / 9)); }
+    .stage-viewport[data-aspect="16:9"] { aspect-ratio: 16 / 9; width: min(100cqw, 1000px, calc(100cqh * 16 / 9)); }
+    #stageCanvas { width: 100%; height: 100%; display: block; }
+
+    .stage-foot {
+      flex: none;
+      width: 100%;
+      max-width: 620px;
+      margin: 0 auto;
+      padding: 0 28px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .transport { display: flex; align-items: center; gap: 12px; }
+    .play-btn {
+      width: 32px; height: 32px; flex: none;
+      border-radius: 50%;
+      border: 1px solid var(--line-strong);
+      background: var(--surface-2);
+      display: grid; place-items: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .play-btn:hover { background: var(--surface-3); }
+    .play-btn svg { width: 12px; height: 12px; fill: var(--text); }
+    .play-btn .i-play { display: none; margin-left: 1px; }
+    .play-btn[data-playing="false"] .i-play { display: block; }
+    .play-btn[data-playing="false"] .i-pause { display: none; }
+    .timecode {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--muted);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      min-width: 86px;
       text-align: right;
     }
-
-    .export-box {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      padding: 9px 13px;
-      border-radius: 8px;
-      font-weight: 600;
-      font-size: 0.83rem;
-      cursor: pointer;
-      transition: background 0.15s, opacity 0.15s;
-    }
-    .btn:hover { background: var(--accent-hover); }
-    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .btn-export {
-      background: var(--danger);
-      padding: 12px 18px;
-      font-size: 0.91rem;
-      width: 100%;
-    }
-    .btn-export:hover { background: var(--danger-hover); }
-    .btn-secondary {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #e2e8f0;
-    }
-    .btn-secondary:hover { background: #334155; }
-
-    .progress-wrap {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      background: #0d121d;
-      border: 1px solid var(--border);
-      padding: 9px 12px;
-      border-radius: 8px;
-    }
-    .progress-track {
-      width: 100%;
-      height: 7px;
-      background: #1e293b;
-      border-radius: 999px;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #6366f1, #ec4899);
-      transition: width 0.08s linear;
-    }
-
-    /* Right Column Tabs */
-    .tab-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-    .tab-btn {
-      padding: 8px 8px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--panel-alt);
-      color: var(--text-muted);
-      font-size: 0.77rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .tab-btn.active {
-      background: rgba(99, 102, 241, 0.18);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    #codeEditorSection {
-      display: flex;
-      flex-direction: column;
-      gap: 9px;
+    input[type="range"] {
       flex: 1;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 16px;
+      background: transparent;
+      cursor: pointer;
     }
+    input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: var(--line-strong); }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--text);
+      margin-top: -4.5px;
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+    }
+    input[type="range"]::-moz-range-track { height: 3px; border-radius: 3px; background: var(--line-strong); }
+    input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--text); }
+
+    .progress-wrap { display: none; flex-direction: column; gap: 6px; }
+    .progress-track { height: 3px; background: var(--line-strong); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.08s linear; }
+
+    /* ---------- Tools panel ---------- */
+    .tools-head { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+    .tools-body { flex: 1; min-height: 0; padding: 14px; display: flex; flex-direction: column; }
+    #codeEditorSection, #batchSection { flex: 1; min-height: 0; flex-direction: column; gap: 10px; }
+    #codeEditorSection { display: flex; }
+    #batchSection { display: none; }
     #codeEditor {
       flex: 1;
-      min-height: 280px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.75rem;
-      line-height: 1.45;
-      color: #7dd3fc;
-      background: #06080d;
-      resize: vertical;
+      min-height: 240px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: #c9d1d9;
+      background: var(--bg);
+      resize: none;
+      tab-size: 2;
     }
-    .editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .editor-foot .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .editor-actions { display: flex; gap: 8px; flex: none; }
 
-    /* Batch Queue */
-    #batchSection {
-      display: none;
-      flex-direction: column;
-      gap: 9px;
-      flex: 1;
-    }
-    .batch-list {
+    .batch-list { flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .batch-empty { padding: 28px 12px; text-align: center; color: var(--faint); font-size: 12px; }
+    .batch-item {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-height: 300px;
-      overflow-y: auto;
-      padding-right: 4px;
     }
-    .batch-item {
-      background: var(--panel-alt);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 9px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .batch-item-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12.5px; }
+    .batch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+    .batch-name .n { color: var(--faint); font-family: var(--mono); font-size: 11px; margin-right: 6px; }
+    .batch-status { flex: none; font-size: 11.5px; color: var(--faint); }
+    .batch-status[data-status="rendering"] { color: var(--accent); }
+    .batch-status[data-status="done"] { color: var(--ok); }
+    .batch-status a { color: inherit; text-underline-offset: 2px; }
+    .batch-item-controls { display: grid; grid-template-columns: minmax(0, 1fr) 76px 30px; gap: 6px; }
+    .batch-item select, .batch-item input[type="text"] { background-color: var(--surface); }
+    .batch-remove-btn {
+      height: auto; padding: 0;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: var(--surface); color: var(--muted);
+      cursor: pointer;
     }
-    .batch-item-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.78rem;
-    }
-    .batch-item-controls {
-      display: grid;
-      grid-template-columns: 1fr 90px auto;
-      gap: 6px;
-    }
+    .batch-remove-btn:hover { color: var(--text); border-color: var(--line-strong); }
 
-    .outputs-box {
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
+    .outputs { border-top: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
     .output-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.75rem;
-      background: var(--panel-alt);
-      padding: 6px 9px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 5px 0;
+      font-size: 12px;
+    }
+    .output-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .output-row .meta { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
+    .output-row a { color: var(--muted); margin-left: 8px; text-underline-offset: 2px; }
+    .output-row a:hover { color: var(--text); }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* ---------- Narrow screens ---------- */
+    @media (max-width: 1180px) {
+      body.tools-open .workspace { grid-template-columns: 312px minmax(0, 1fr); }
+      .tools {
+        position: fixed;
+        top: 52px; right: 0; bottom: 0;
+        width: min(400px, 100vw);
+        z-index: 10;
+        box-shadow: -24px 0 48px rgba(0, 0, 0, 0.6);
+      }
+    }
+    @media (max-width: 760px) {
+      html, body { height: auto; }
+      body { display: block; overflow: auto; }
+      .topbar { position: sticky; top: 0; z-index: 5; background: var(--bg); }
+      .brand-name { overflow: hidden; text-overflow: ellipsis; }
+      .workspace, body.tools-open .workspace { display: flex; flex-direction: column; }
+      .sidebar { border-right: 0; border-top: 1px solid var(--line); overflow: visible; order: 2; }
+      .stage { order: 1; }
+      .stage-area { flex: none; height: 68vh; padding: 16px 16px 12px; }
+      .stage-foot { padding: 0 16px 16px; }
+      .spec, #btnTogglePanel .label { display: none; }
+      #btnTogglePanel { padding: 0 9px; }
     }
   </style>
 </head>
 <body>
-  <header>
+  <header class="topbar">
     <div class="brand">
-      <h1>🎬 AI Image-to-Video Studio</h1>
-      <span class="pill">100% In-House • Keyless • 1080p Min • 30.000 FPS CFR MP4</span>
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M1.5 0.8v8.4L9 5z"/></svg></span>
+      <span class="brand-name">Image-to-Video Studio</span>
     </div>
-    <div class="header-right">
-      <span class="spec-badge" id="specBadge">1080×1920 (1080p) • 30 FPS CFR • 120 Frames</span>
-      <a href="https://github.com/abhishekjais-124/ai-image-to-video" target="_blank" rel="noopener">GitHub Repo ↗</a>
+    <div class="top-actions">
+      <span class="spec" id="specBadge"></span>
+      <button class="btn btn-ghost" id="btnTogglePanel" aria-pressed="false" title="Scene plan, custom code, batch queue and renders">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><path d="M10 2.75v10.5"/></svg>
+        <span class="label">Code &amp; Batch</span>
+      </button>
+      <a class="icon-btn" href="https://github.com/abhishekjais-124/ai-image-to-video" target="_blank" rel="noopener" title="GitHub repository" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.77-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.19c0 .21.15.46.55.38A8 8 0 0 0 8 .2z"/></svg>
+      </a>
+      <button class="btn btn-primary" id="btnExportMp4">Export MP4</button>
     </div>
   </header>
 
-  <main class="main-layout">
-    <!-- Left Column: Scene & Model Director -->
-    <section class="panel">
-      <div class="panel-title">
-        <span>⚙️ In-House Scene Director</span>
-      </div>
-
-      <div class="form-group">
-        <label>1. Source Image (Drop 1 or Multiple for Batch)</label>
-        <div class="dropzone" id="dropzone">
+  <main class="workspace">
+    <!-- Controls -->
+    <aside class="sidebar">
+      <div class="section">
+        <div class="section-head">
+          <span class="section-title">Image</span>
+          <select id="selSample" class="select-quiet" aria-label="Load a sample image">
+            <option value="">Samples</option>
+            <option value="/media/samples/sample-ancient-pyramid.svg" selected>Pyramid</option>
+            <option value="/media/samples/sample-space-nebula.svg">Nebula</option>
+          </select>
+        </div>
+        <div class="dropzone" id="dropzone" title="Drop several images to start a batch">
           <input type="file" id="fileInput" accept="image/*" />
-          <div style="font-size: 1.25rem;">🖼️</div>
-          <strong style="font-size: 0.82rem;">Click or Drag Image(s) Here</strong>
-          <p id="imageFileName">sample-ancient-pyramid.svg</p>
-        </div>
-        <select id="selSample" title="Switch built-in sample image">
-          <option value="/media/samples/sample-ancient-pyramid.svg">Sample 1: Ancient Pyramid (9:16 Vector)</option>
-          <option value="/media/samples/sample-space-nebula.svg">Sample 2: Deep Space Nebula (9:16 Vector)</option>
-        </select>
-        <div id="resWarningBanner" class="res-banner ok"></div>
-      </div>
-
-      <div class="form-group">
-        <label>2. In-House Model Selection (Output Varies by Model)</label>
-        <select id="selModel"></select>
-        <div class="hint" id="modelDesc"></div>
-      </div>
-
-      <div class="form-group">
-        <label>3. Fact-Short Visual Preset & Motion Prompt</label>
-        <select id="selPreset"></select>
-        <input type="text" id="motionPrompt" placeholder="Optional prompt (e.g. 'zoom out with embers', 'rain + cyan')" />
-        <div class="hint" id="presetDesc"></div>
-      </div>
-
-      <div class="form-group">
-        <label>4. Aspect Ratio & Resolution (1080p Floor, 30 FPS Locked)</label>
-        <div class="radio-grid">
-          <div class="radio-btn active" id="btnShorts">📱 9:16 Shorts</div>
-          <div class="radio-btn" id="btnLandscape">🖥️ 16:9 Widescreen</div>
-        </div>
-        <div class="radio-grid" style="margin-top: 4px;">
-          <select id="selResolution">
-            <option value="1080p" selected>1080p Full HD (Min)</option>
-            <option value="1440p">1440p QHD (2K)</option>
-          </select>
-          <select id="selDuration">
-            <option value="3">3s (90 frames @ 30fps)</option>
-            <option value="4" selected>4s (120 frames @ 30fps)</option>
-            <option value="5">5s (150 frames @ 30fps)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>5. Fact Caption Overlay (Auto Word-Wrapped Safe Zone)</label>
-        <input type="text" id="factTitle" value="DID YOU KNOW?" placeholder="Fact Headline (e.g. DID YOU KNOW?)" />
-        <textarea id="factSubtitle" rows="2" placeholder="Fact details (automatically wraps inside safe margins)...">The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.</textarea>
-      </div>
-
-      <div class="editor-actions">
-        <button class="btn" id="btnVariation">🎲 New Model Variation (Seed #1)</button>
-        <button class="btn btn-secondary" id="btnRegeneratePlan">🔄 Reset Plan</button>
-      </div>
-    </section>
-
-    <!-- Center Column: Unified 1080p / 30 FPS Canvas Stage & True MP4 Export -->
-    <section class="panel stage-panel">
-      <div style="width: 100%; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.85rem; font-weight: 600; color: #cbd5e1;">🎯 Unified 1080p+ Stage (Preview === Export)</span>
-        <span style="font-size: 0.75rem; color: var(--text-muted);">WebCodecs H.264 • 30.000 FPS CFR</span>
-      </div>
-
-      <div class="stage-viewport" id="stageViewport" style="width: 324px; height: 576px;">
-        <canvas id="stageCanvas" width="1080" height="1920"></canvas>
-      </div>
-
-      <div class="timeline-bar">
-        <div class="timeline-controls">
-          <button class="btn btn-secondary" id="btnPlayPause" style="padding: 6px 12px; font-size: 0.78rem;">⏸ Pause</button>
-          <input type="range" id="frameScrubber" min="0" max="119" value="0" step="1" />
-        </div>
-        <div class="timeline-readout" id="timelineReadout">Frame 001 / 120 • 0.00s / 4.0s • 30 FPS</div>
-      </div>
-
-      <div class="export-box">
-        <button class="btn btn-export" id="btnExportMp4">
-          🎬 Export 1080p 30FPS .MP4 (4s)
-        </button>
-
-        <div class="progress-wrap" id="exportProgressWrap">
-          <div class="progress-track">
-            <div class="progress-fill" id="exportProgressBar"></div>
+          <img class="thumb" id="imageThumb" alt="" />
+          <div class="dropzone-text">
+            <span class="file-name" id="imageFileName">sample-ancient-pyramid.svg</span>
+            <span class="hint">Drop an image or click to replace</span>
           </div>
-          <div class="hint" id="exportProgressText" style="color: #e2e8f0;">Encoding...</div>
         </div>
+        <div id="resWarningBanner" class="res-banner"></div>
+      </div>
 
+      <div class="section">
+        <span class="section-title">Style</span>
+        <div class="field">
+          <label for="selModel">Director</label>
+          <select id="selModel"></select>
+        </div>
+        <div class="field">
+          <label for="selPreset">Look</label>
+          <select id="selPreset"></select>
+        </div>
+        <input type="text" id="motionPrompt" aria-label="Direction prompt" placeholder="Direction, e.g. slow zoom out, rain, cyan" />
+      </div>
+
+      <div class="section">
+        <span class="section-title">Format</span>
+        <div class="segmented">
+          <button class="active" id="btnShorts">9:16</button>
+          <button id="btnLandscape">16:9</button>
+        </div>
+        <div class="row-2">
+          <select id="selResolution" aria-label="Resolution">
+            <option value="1080p" selected>1080p</option>
+            <option value="1440p">1440p</option>
+          </select>
+          <select id="selDuration" aria-label="Duration">
+            <option value="3">3 seconds</option>
+            <option value="4" selected>4 seconds</option>
+            <option value="5">5 seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="section-title">Caption</span>
+        <input type="text" id="factTitle" value="DID YOU KNOW?" aria-label="Headline" placeholder="Headline" />
+        <textarea id="factSubtitle" rows="3" aria-label="Caption text" placeholder="Caption text">The Great Pyramid of Giza aligns with true north within 3/60th of a single degree.</textarea>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="btn" id="btnVariation" title="Generate a different take from the same director">New variation</button>
+        <button class="btn btn-ghost" id="btnRegeneratePlan" title="Re-analyse the image and reset the scene plan">Reset</button>
+      </div>
+    </aside>
+
+    <!-- Stage -->
+    <section class="stage">
+      <div class="stage-area">
+        <div class="stage-viewport" id="stageViewport" data-aspect="9:16">
+          <canvas id="stageCanvas" width="1080" height="1920"></canvas>
+        </div>
+      </div>
+      <div class="stage-foot">
+        <div class="transport">
+          <button class="play-btn" id="btnPlayPause" data-playing="true" aria-label="Pause">
+            <svg class="i-pause" viewBox="0 0 12 12"><rect x="2" y="1.5" width="3" height="9" rx="0.8"/><rect x="7" y="1.5" width="3" height="9" rx="0.8"/></svg>
+            <svg class="i-play" viewBox="0 0 12 12"><path d="M2.5 1.2v9.6L11 6z"/></svg>
+          </button>
+          <input type="range" id="frameScrubber" min="0" max="119" value="0" step="1" aria-label="Timeline" />
+          <span class="timecode" id="timelineReadout">0.00 / 4.00s</span>
+        </div>
+        <div class="progress-wrap" id="exportProgressWrap">
+          <div class="progress-track"><div class="progress-fill" id="exportProgressBar"></div></div>
+          <div class="hint" id="exportProgressText">Encoding…</div>
+        </div>
         <div id="exportVerifyBadge" class="res-banner ok"></div>
       </div>
     </section>
 
-    <!-- Right Column: Live Scene Editor + Batch Mode + Rendered Outputs -->
-    <section class="panel">
-      <div class="panel-title">
-        <span>💻 Scene Code & Batch Studio</span>
-      </div>
-
-      <select id="selSavedScene" title="Load a scene generated by Antigravity, Claude Desktop, Codex, or saved from UI">
-        <option value="">📂 Load Saved / Agent Scene (media/generated-code/)...</option>
-      </select>
-
-      <div class="tab-bar">
-        <button class="tab-btn active" id="tabJsonBtn">{ } Scene Plan</button>
-        <button class="tab-btn" id="tabJsBtn">⚡ Custom JS</button>
-        <button class="tab-btn" id="tabBatchBtn">📦 Batch (12–20)</button>
-      </div>
-
-      <!-- Tab 1 & 2: JSON / JS Live Editor -->
-      <div id="codeEditorSection">
-        <p class="hint">
-          Each model generates both a Scene Plan JSON and custom Canvas 2D VFX code. Edit either live — changes export directly into the MP4.
-        </p>
-        <textarea id="codeEditor" spellcheck="false"></textarea>
-        <div class="hint" id="editorStatus">Active Model: saliency-vision (Seed #1)</div>
-        <div class="editor-actions">
-          <button class="btn btn-secondary" id="btnApplyCode">✓ Apply Edits</button>
-          <button class="btn" id="btnSaveScene">💾 Save Scene Plan</button>
+    <!-- Code & Batch -->
+    <aside class="tools">
+      <div class="tools-head">
+        <div class="segmented">
+          <button class="active" id="tabJsonBtn">Plan</button>
+          <button id="tabJsBtn">Code</button>
+          <button id="tabBatchBtn">Batch</button>
         </div>
       </div>
 
-      <!-- Tab 3: Batch Mode for Fact Shorts -->
-      <div id="batchSection">
-        <p class="hint">
-          Queue 12–20 images for a full 60-second Fact Short. Each clip renders at 1080p+ / 30.000 FPS H.264 MP4 into <code>media/outputs/</code>.
-        </p>
-        <input type="file" id="batchFileInput" accept="image/*" multiple style="display:none;" />
-        <div class="editor-actions">
-          <button class="btn btn-secondary" id="btnAddBatchFiles">➕ Upload Images</button>
-          <button class="btn btn-secondary" id="btnAddSampleBatch">✨ Load 2 Sample Clips</button>
+      <div class="tools-body">
+        <div id="codeEditorSection">
+          <select id="selSavedScene" aria-label="Load a saved scene">
+            <option value="">Load saved scene…</option>
+          </select>
+          <textarea id="codeEditor" spellcheck="false" aria-label="Scene editor"></textarea>
+          <div class="editor-foot">
+            <span class="hint" id="editorStatus"></span>
+            <div class="editor-actions">
+              <button class="btn btn-ghost" id="btnApplyCode">Apply</button>
+              <button class="btn" id="btnSaveScene">Save scene</button>
+            </div>
+          </div>
         </div>
 
-        <div class="batch-list" id="batchQueueList"></div>
-
-        <button class="btn btn-export" id="btnRunBatch">
-          🚀 Render Entire Batch (1080p • 30 FPS MP4)
-        </button>
+        <div id="batchSection">
+          <input type="file" id="batchFileInput" accept="image/*" multiple style="display:none;" />
+          <div class="row-2">
+            <button class="btn" id="btnAddBatchFiles">Add images</button>
+            <button class="btn btn-ghost" id="btnAddSampleBatch">Add samples</button>
+          </div>
+          <div class="batch-list" id="batchQueueList"></div>
+          <button class="btn btn-primary btn-block" id="btnRunBatch">Render batch</button>
+        </div>
       </div>
 
-      <!-- Saved Outputs in media/outputs/ -->
-      <div class="outputs-box">
-        <label>📂 Rendered MP4 Clips (media/outputs/)</label>
+      <div class="outputs">
+        <span class="section-title">Renders</span>
         <div id="outputsList">
-          <div class="hint">No rendered MP4 clips in media/outputs/ yet.</div>
+          <div class="hint">Nothing rendered yet.</div>
         </div>
       </div>
-    </section>
+    </aside>
   </main>
 
   <script type="module" src="/src/ui/app.js"></script>

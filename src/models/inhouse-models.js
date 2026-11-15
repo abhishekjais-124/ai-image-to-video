@@ -6,35 +6,35 @@ import { FACT_PRESETS, seededRandom } from '../presets/fact-presets.js';
 export const INHOUSE_MODELS = [
   {
     id: 'saliency-vision',
-    name: 'In-House Saliency Vision v1 (Auto Focus + Lens Flare)',
+    name: 'Saliency Vision',
     defaultPreset: 'documentary-kenburns',
     description:
       'Analyzes pixel contrast, luminance, and color warmth to detect the subject focal point and adds a soft anamorphic focal glow.'
   },
   {
     id: 'viral-hook-v1',
-    name: 'Viral Shorts Hook Director (Fast Push + Focus Ring + Progress Bar)',
+    name: 'Viral Hook',
     defaultPreset: '3d-perspective-tilt',
     description:
       'High-retention Shorts pacing: energetic camera push toward the subject, animated focal callout pulse, and retention progress bar.'
   },
   {
     id: 'cinematic-doc-v1',
-    name: 'Cinematic Documentary Master (Slow Reveal + Film Letterbox)',
+    name: 'Cinematic Documentary',
     defaultPreset: 'vintage-film-grain',
     description:
       'Tripod-grade pull-back reveal with warm golden dust motes, subtle documentary frame stamp, and soft filmic grading.'
   },
   {
     id: 'mystery-noir-v1',
-    name: 'Mystery & True-Crime Director (Handheld + Mist + Rain)',
+    name: 'Mystery Noir',
     defaultPreset: 'mystery-fog-shake',
     description:
       'Moody handheld camera sway paired with rolling fog banks, atmospheric rain streaks, and deep shadow pulses.'
   },
   {
     id: 'scifi-neural-v1',
-    name: 'Sci-Fi Neural Director (Cyber Glitch + Telemetry HUD)',
+    name: 'Sci-Fi Neural',
     defaultPreset: 'scifi-cyber-glitch',
     description:
       'Futuristic holographic scanlines, RGB chromatic glitch slices, and animated target telemetry around the detected focal point.'

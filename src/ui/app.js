@@ -55,6 +55,33 @@ const fileInput = document.getElementById('fileInput');
 const imageFileNameEl = document.getElementById('imageFileName');
 const sampleSelectEl = document.getElementById('selSample');
 const resWarningBanner = document.getElementById('resWarningBanner');
+const imageThumbEl = document.getElementById('imageThumb');
+const btnTogglePanel = document.getElementById('btnTogglePanel');
+
+const COLOR_MUTED = '#8b8b93';
+const COLOR_OK = '#7fd4a8';
+const COLOR_ERR = '#f08a8a';
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function setToolsOpen(open) {
+  document.body.classList.toggle('tools-open', open);
+  btnTogglePanel.setAttribute('aria-pressed', String(open));
+  try {
+    localStorage.setItem('studio.toolsOpen', open ? '1' : '0');
+  } catch (_) {
+    // Storage unavailable — panel state just won't persist
+  }
+}
+
+function setPlayButtonState() {
+  btnPlayPause.dataset.playing = String(state.isPlaying);
+  btnPlayPause.setAttribute('aria-label', state.isPlaying ? 'Pause' : 'Play');
+}
 
 const btnShorts = document.getElementById('btnShorts');
 const btnLandscape = document.getElementById('btnLandscape');
@@ -111,7 +138,7 @@ function initDropdowns() {
   selModel.value = state.modelId;
 
   selPreset.innerHTML = FACT_PRESETS.map(
-    (p) => `<option value="${p.id}">${p.icon} ${p.name}</option>`
+    (p) => `<option value="${p.id}">${p.name}</option>`
   ).join('');
   selPreset.value = state.presetId;
 
@@ -121,6 +148,8 @@ function initDropdowns() {
 function updateDescriptions() {
   const model = INHOUSE_MODELS.find((m) => m.id === state.modelId);
   const preset = FACT_PRESETS.find((p) => p.id === state.presetId);
+  if (model) selModel.title = model.description;
+  if (preset) selPreset.title = preset.description;
   if (modelDescEl && model) modelDescEl.textContent = model.description;
   if (presetDescEl && preset) presetDescEl.textContent = preset.description;
 }
@@ -157,6 +186,7 @@ async function loadSourceImage(src, displayName = 'image') {
   state.imageSrc = src;
   state.imageName = displayName;
   imageFileNameEl.textContent = displayName;
+  imageThumbEl.src = src;
 
   updateResolutionCheck();
   rebuildScenePlanFromModel({ autoSelectPreset: false });
@@ -172,13 +202,12 @@ function updateResolutionCheck() {
     state.imageSrc
   );
 
-  resWarningBanner.style.display = 'block';
   if (check.meetsMinResolution) {
-    resWarningBanner.className = 'res-banner ok';
-    resWarningBanner.textContent = `✓ ${check.message}`;
+    resWarningBanner.style.display = 'none';
   } else {
+    resWarningBanner.style.display = 'block';
     resWarningBanner.className = 'res-banner warn';
-    resWarningBanner.textContent = `⚠️ ${check.message}`;
+    resWarningBanner.textContent = check.message;
   }
 }
 
@@ -187,13 +216,7 @@ function updateStageDisplayGeometry() {
   stageCanvas.width = width;
   stageCanvas.height = height;
 
-  if (state.aspectRatio === '9:16') {
-    stageViewport.style.width = '324px';
-    stageViewport.style.height = '576px';
-  } else {
-    stageViewport.style.width = '608px';
-    stageViewport.style.height = '342px';
-  }
+  stageViewport.dataset.aspect = state.aspectRatio;
 
   const totalFrames = Math.round(state.duration * FIXED_FPS);
   frameScrubber.max = String(totalFrames - 1);
@@ -201,8 +224,8 @@ function updateStageDisplayGeometry() {
     state.currentFrame = 0;
   }
 
-  specBadge.textContent = `${width}×${height} (${state.resolution}) • ${FIXED_FPS} FPS CFR • ${totalFrames} Frames`;
-  btnExportMp4.textContent = `🎬 Export ${state.resolution} ${FIXED_FPS}FPS .MP4 (${state.duration}s)`;
+  specBadge.textContent = `${width} × ${height} · ${FIXED_FPS} fps · ${state.duration}s`;
+  specBadge.title = `${totalFrames} frames, constant frame rate, H.264 MP4`;
 }
 
 function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
@@ -231,7 +254,7 @@ function rebuildScenePlanFromModel({ autoSelectPreset = false } = {}) {
     compileCustomCode(plan.generatedCustomCode);
   }
 
-  btnVariation.textContent = `🎲 New Model Variation (Seed #${state.variationSeed})`;
+  btnVariation.innerHTML = `New variation <span class="seed">#${state.variationSeed}</span>`;
   syncEditorContent();
   renderCurrentFrame();
 }
@@ -241,12 +264,12 @@ function syncEditorContent() {
     const cleanPlan = { ...state.scenePlan };
     delete cleanPlan.generatedCustomCode;
     codeEditor.value = JSON.stringify(cleanPlan, null, 2);
-    editorStatus.textContent = `Active Model: ${state.modelId} (Seed #${state.variationSeed}) — Editable JSON`;
-    editorStatus.style.color = '#94a3b8';
+    editorStatus.textContent = `${state.modelId} · seed ${state.variationSeed}`;
+    editorStatus.style.color = COLOR_MUTED;
   } else if (state.editorTab === 'js') {
     codeEditor.value = state.customCodeSource;
-    editorStatus.textContent = `Model-Generated Canvas 2D VFX (${state.modelId}) — Editable JS`;
-    editorStatus.style.color = '#94a3b8';
+    editorStatus.textContent = `Canvas 2D layer · ctx, params`;
+    editorStatus.style.color = COLOR_MUTED;
   }
 }
 
@@ -267,22 +290,22 @@ function applyEditorChanges() {
         state.presetId = parsed.presetId;
         selPreset.value = parsed.presetId;
       }
-      editorStatus.textContent = '✓ Valid Scene Plan JSON applied live';
-      editorStatus.style.color = '#34d399';
+      editorStatus.textContent = 'Applied';
+      editorStatus.style.color = COLOR_OK;
       renderCurrentFrame();
     } catch (err) {
-      editorStatus.textContent = `⚠️ JSON Syntax Error: ${err.message}`;
-      editorStatus.style.color = '#f87171';
+      editorStatus.textContent = `JSON error: ${err.message}`;
+      editorStatus.style.color = COLOR_ERR;
     }
   } else if (state.editorTab === 'js') {
     const ok = compileCustomCode(codeEditor.value);
     if (ok) {
-      editorStatus.textContent = '✓ Custom Canvas 2D layer compiled & active';
-      editorStatus.style.color = '#34d399';
+      editorStatus.textContent = 'Applied';
+      editorStatus.style.color = COLOR_OK;
       renderCurrentFrame();
     } else {
-      editorStatus.textContent = '⚠️ JS Syntax Error in Custom Canvas layer';
-      editorStatus.style.color = '#f87171';
+      editorStatus.textContent = 'Syntax error in custom code';
+      editorStatus.style.color = COLOR_ERR;
     }
   }
 }
@@ -306,9 +329,8 @@ function renderCurrentFrame() {
   });
 
   frameScrubber.value = String(clampedFrame);
-  const padFrame = String(clampedFrame + 1).padStart(3, '0');
-  const padTotal = String(totalFrames).padStart(3, '0');
-  timelineReadout.textContent = `Frame ${padFrame} / ${padTotal} • ${t.toFixed(2)}s / ${state.duration.toFixed(1)}s • ${FIXED_FPS} FPS`;
+  timelineReadout.textContent = `${t.toFixed(2)} / ${state.duration.toFixed(2)}s`;
+  timelineReadout.title = `Frame ${clampedFrame + 1} of ${totalFrames}`;
 }
 
 function animationLoop(now) {
@@ -350,8 +372,8 @@ async function handleExportSingleClip() {
         exportProgressBar.style.width = `${percent}%`;
         exportProgressText.textContent =
           phase === 'muxing'
-            ? `Muxing FastStart H.264 MP4 (${totalFrames} frames @ ${FIXED_FPS} FPS)...`
-            : `Rendering & Encoding Frame ${String(frame).padStart(3, '0')} / ${totalFrames} (${percent}%) • ${FIXED_FPS} FPS CFR`;
+            ? 'Finalizing…'
+            : `Rendering frame ${frame} of ${totalFrames}`;
       }
     });
 
@@ -370,20 +392,20 @@ async function handleExportSingleClip() {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 
     const v = result.verification;
-    const kb = (v.byteLength / 1024).toFixed(1);
+    const sizeMb = v.byteLength / (1024 * 1024);
+    const kb = sizeMb >= 1 ? `${sizeMb.toFixed(1)} MB` : `${(v.byteLength / 1024).toFixed(0)} KB`;
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner ok';
     exportVerifyBadge.innerHTML =
-      `✓ <strong>Verified ${v.codec} .${result.ext.toUpperCase()}</strong> • ` +
-      `${v.width}×${v.height} • <strong>${v.fps}.000 FPS CFR</strong> • ` +
-      `${v.frameCount} Frames (${v.durationSec}s) • ${kb} KB • ` +
-      `Saved to <a href="${saved.url}" target="_blank" style="color:#6ee7b7;text-decoration:underline;">media/outputs/${saved.fileName}</a>`;
+      `Saved <a href="${saved.url}" target="_blank">${escapeHtml(saved.fileName)}</a> ` +
+      `<span class="meta">· ${v.width} × ${v.height} · ${v.fps} fps · ${v.durationSec}s · ${kb}</span>`;
+    exportVerifyBadge.title = `${v.codec} · ${v.frameCount} frames · saved in media/outputs/`;
 
     await refreshMediaLists();
   } catch (err) {
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner warn';
-    exportVerifyBadge.textContent = `⚠️ Export failed: ${err.message}`;
+    exportVerifyBadge.textContent = `Export failed: ${err.message}`;
   } finally {
     state.isExporting = false;
     btnExportMp4.disabled = false;
@@ -412,42 +434,37 @@ function addItemToBatchQueue({ name, src, presetId, duration, factTitle, factSub
 
 function renderBatchQueueUI() {
   if (state.batchQueue.length === 0) {
-    batchQueueListEl.innerHTML = `<div class="hint" style="padding:14px;text-align:center;">No clips in batch queue yet. Add multiple images or click "Load 2 Sample Clips" above.</div>`;
+    batchQueueListEl.innerHTML = `<div class="batch-empty">Queue is empty. Add images to render them one after another.</div>`;
     return;
   }
+
+  const statusLabel = { queued: 'Queued', rendering: 'Rendering…', done: 'Done' };
 
   batchQueueListEl.innerHTML = state.batchQueue
     .map((item, i) => {
       const presetOptions = FACT_PRESETS.map(
         (p) =>
-          `<option value="${p.id}" ${p.id === item.presetId ? 'selected' : ''}>${p.icon} ${p.name}</option>`
+          `<option value="${p.id}" ${p.id === item.presetId ? 'selected' : ''}>${p.name}</option>`
       ).join('');
-      const badgeColor =
-        item.status === 'done'
-          ? '#34d399'
-          : item.status === 'rendering'
-          ? '#fcd34d'
-          : '#94a3b8';
 
       return `
       <div class="batch-item" data-id="${item.id}">
         <div class="batch-item-top">
-          <strong>#${i + 1} • ${item.name}</strong>
-          <span style="font-size:0.74rem;color:${badgeColor};font-weight:700;">
-            ${item.status.toUpperCase()}
-            ${item.outputUrl ? ` — <a href="${item.outputUrl}" target="_blank" style="color:#34d399;">Download MP4</a>` : ''}
+          <span class="batch-name" title="${escapeHtml(item.name)}"><span class="n">${String(i + 1).padStart(2, '0')}</span>${escapeHtml(item.name)}</span>
+          <span class="batch-status" data-status="${item.status}">
+            ${statusLabel[item.status] || item.status}${item.outputUrl ? ` · <a href="${item.outputUrl}" target="_blank">Open</a>` : ''}
           </span>
         </div>
         <div class="batch-item-controls">
-          <select class="batch-preset-sel" data-index="${i}">${presetOptions}</select>
-          <select class="batch-dur-sel" data-index="${i}">
-            <option value="3" ${item.duration === 3 ? 'selected' : ''}>3s (90f)</option>
-            <option value="4" ${item.duration === 4 ? 'selected' : ''}>4s (120f)</option>
-            <option value="5" ${item.duration === 5 ? 'selected' : ''}>5s (150f)</option>
+          <select class="batch-preset-sel" data-index="${i}" aria-label="Look">${presetOptions}</select>
+          <select class="batch-dur-sel" data-index="${i}" aria-label="Duration">
+            <option value="3" ${item.duration === 3 ? 'selected' : ''}>3s</option>
+            <option value="4" ${item.duration === 4 ? 'selected' : ''}>4s</option>
+            <option value="5" ${item.duration === 5 ? 'selected' : ''}>5s</option>
           </select>
-          <button class="btn btn-secondary batch-remove-btn" data-index="${i}" style="padding:5px 9px;font-size:0.74rem;">✕</button>
+          <button class="batch-remove-btn" data-index="${i}" aria-label="Remove from queue">✕</button>
         </div>
-        <input type="text" class="batch-title-inp" data-index="${i}" value="${item.factTitle.replace(/"/g, '&quot;')}" placeholder="Clip Headline (optional)" />
+        <input type="text" class="batch-title-inp" data-index="${i}" value="${escapeHtml(item.factTitle)}" placeholder="Headline (optional)" />
       </div>`;
     })
     .join('');
@@ -531,7 +548,7 @@ async function runBatchExport() {
         mirrorCtx: stageCtx,
         onProgress: ({ frame, totalFrames, percent }) => {
           exportProgressBar.style.width = `${percent}%`;
-          exportProgressText.textContent = `Batch Clip ${i + 1}/${state.batchQueue.length}: Frame ${frame}/${totalFrames} (${percent}%)`;
+          exportProgressText.textContent = `Clip ${i + 1} of ${state.batchQueue.length} · ${percent}%`;
         }
       });
 
@@ -564,24 +581,25 @@ async function refreshMediaLists() {
 
     // Populate Saved / Agent-Generated Scenes dropdown
     selSavedScene.innerHTML =
-      `<option value="">📂 Load Saved / Agent Scene (${state.scenesList.length} in media/generated-code/)...</option>` +
+      `<option value="">${state.scenesList.length ? `Load saved scene (${state.scenesList.length})…` : 'No saved scenes yet'}</option>` +
       state.scenesList
-        .map((s) => `<option value="${s.url}">${s.name}</option>`)
+        .map((s) => `<option value="${s.url}">${escapeHtml(s.name)}</option>`)
         .join('');
 
     if (state.outputsList.length === 0) {
-      outputsListEl.innerHTML = `<div class="hint">No rendered MP4 clips in media/outputs/ yet.</div>`;
+      outputsListEl.innerHTML = `<div class="hint">Nothing rendered yet.</div>`;
       return;
     }
 
     outputsListEl.innerHTML = state.outputsList
       .slice(0, 8)
       .map((f) => {
-        const kb = (f.sizeBytes / 1024).toFixed(1);
+        const mb = f.sizeBytes / (1024 * 1024);
+        const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${(f.sizeBytes / 1024).toFixed(0)} KB`;
         return `
         <div class="output-row">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px;" title="${f.name}">🎬 ${f.name}</span>
-          <span>${kb} KB • <a href="${f.url}" download="${f.name}" style="color:#818cf8;">Download</a></span>
+          <span class="name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+          <span class="meta">${size}<a href="${f.url}" download="${escapeHtml(f.name)}">Download</a></span>
         </div>`;
       })
       .join('');
@@ -638,15 +656,19 @@ async function loadSavedSceneFromUrl(url) {
       await loadImageElement(data.imageSrc).then((img) => {
         state.imgElement = img;
         state.imageSrc = data.imageSrc;
+        state.imageName = data.imageSrc.split('/').pop();
+        imageFileNameEl.textContent = state.imageName;
+        imageThumbEl.src = data.imageSrc;
+        updateResolutionCheck();
       }).catch(() => {});
     }
 
     renderCurrentFrame();
-    editorStatus.textContent = `✓ Loaded scene from ${decodeURIComponent(url)}`;
-    editorStatus.style.color = '#34d399';
+    editorStatus.textContent = `Loaded ${decodeURIComponent(url).split('/').pop()}`;
+    editorStatus.style.color = COLOR_OK;
   } catch (err) {
-    editorStatus.textContent = `⚠️ Failed to load scene: ${err.message}`;
-    editorStatus.style.color = '#f87171';
+    editorStatus.textContent = `Couldn't load scene: ${err.message}`;
+    editorStatus.style.color = COLOR_ERR;
   }
 }
 
@@ -672,17 +694,18 @@ async function saveSceneToDisk() {
     });
     const data = await res.json();
     if (data.ok) {
-      editorStatus.textContent = `✓ Saved to ${data.path}`;
-      editorStatus.style.color = '#34d399';
+      editorStatus.textContent = `Saved ${data.fileName}`;
+      editorStatus.style.color = COLOR_OK;
       await refreshMediaLists();
     }
   } catch (err) {
-    editorStatus.textContent = `⚠️ Save failed: ${err.message}`;
-    editorStatus.style.color = '#f87171';
+    editorStatus.textContent = `Save failed: ${err.message}`;
+    editorStatus.style.color = COLOR_ERR;
   }
 }
 
 function switchRightTab(tab) {
+  setToolsOpen(true);
   state.editorTab = tab;
   tabJsonBtn.classList.toggle('active', tab === 'json');
   tabJsBtn.classList.toggle('active', tab === 'js');
@@ -724,8 +747,8 @@ function bindEvents() {
 
   sampleSelectEl.addEventListener('change', () => {
     const val = sampleSelectEl.value;
-    const label = sampleSelectEl.options[sampleSelectEl.selectedIndex].text;
-    loadSourceImage(val, label);
+    if (!val) return;
+    loadSourceImage(val, val.split('/').pop());
   });
 
   btnShorts.addEventListener('click', () => {
@@ -811,18 +834,22 @@ function bindEvents() {
   btnPlayPause.addEventListener('click', () => {
     state.isPlaying = !state.isPlaying;
     state.lastTickTime = 0;
-    btnPlayPause.textContent = state.isPlaying ? '⏸ Pause' : '▶ Play 30 FPS';
+    setPlayButtonState();
   });
 
   frameScrubber.addEventListener('input', () => {
     state.isPlaying = false;
-    btnPlayPause.textContent = '▶ Play 30 FPS';
+    setPlayButtonState();
     state.currentFrame = Number(frameScrubber.value);
     renderCurrentFrame();
   });
 
   btnExportMp4.addEventListener('click', () => {
     handleExportSingleClip();
+  });
+
+  btnTogglePanel.addEventListener('click', () => {
+    setToolsOpen(!document.body.classList.contains('tools-open'));
   });
 
   tabJsonBtn.addEventListener('click', () => switchRightTab('json'));
@@ -867,6 +894,7 @@ function bindEvents() {
 function handleUploadedFile(file) {
   const reader = new FileReader();
   reader.onload = (ev) => {
+    sampleSelectEl.value = '';
     loadSourceImage(ev.target.result, file.name);
   };
   reader.readAsDataURL(file);
@@ -887,6 +915,14 @@ function handleMultipleBatchFiles(files) {
 }
 
 // Initialize Studio
+let toolsOpenSaved = false;
+try {
+  toolsOpenSaved = localStorage.getItem('studio.toolsOpen') === '1';
+} catch (_) {
+  // Storage unavailable
+}
+setToolsOpen(toolsOpenSaved);
+setPlayButtonState();
 initDropdowns();
 updateStageDisplayGeometry();
 bindEvents();

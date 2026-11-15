@@ -19,7 +19,7 @@ export const RESOLUTIONS = {
 export const FACT_PRESETS = [
   {
     id: 'documentary-kenburns',
-    name: 'Documentary Ken Burns + Dust',
+    name: 'Ken Burns + Dust',
     icon: '📽️',
     description:
       'Smooth camera push toward the focal point with warm floating dust motes and documentary vignette.',
@@ -36,7 +36,7 @@ export const FACT_PRESETS = [
   },
   {
     id: '3d-perspective-tilt',
-    name: '3D Perspective Tilt + Spotlight',
+    name: '3D Tilt + Spotlight',
     icon: '✨',
     description:
       'Dynamic 3D orbital pan with a sweeping volumetric spotlight and specular light flare over the subject.',
@@ -53,7 +53,7 @@ export const FACT_PRESETS = [
   },
   {
     id: 'mystery-fog-shake',
-    name: 'Mystery Fog + Handheld Pulse',
+    name: 'Fog + Handheld',
     icon: '🌫️',
     description:
       'Layered rolling atmospheric fog, subtle handheld documentary camera sway, and deep shadow pulses.',
@@ -70,7 +70,7 @@ export const FACT_PRESETS = [
   },
   {
     id: 'scifi-cyber-glitch',
-    name: 'Sci-Fi Cyber Grid + Glitch',
+    name: 'Cyber Grid + Glitch',
     icon: '⚡',
     description:
       'Holographic HUD grid, sweeping cyan scanline, RGB slice glitch pulses, and digital telemetry frame.',
@@ -87,7 +87,7 @@ export const FACT_PRESETS = [
   },
   {
     id: 'vintage-film-grain',
-    name: 'Vintage Film Grain + Light Leaks',
+    name: 'Film Grain + Light Leaks',
     icon: '🎞️',
     description:
       'Authentic 16mm/35mm film grain, organic amber light leaks, gate weave, and vertical celluloid scratches.',
