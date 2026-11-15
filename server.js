@@ -132,7 +132,17 @@ const server = http.createServer(async (req, res) => {
 
     // Static file serving with strict path traversal protection
     const relativeTarget = pathname === '/' ? '/src/index.html' : pathname;
-    const resolvedPath = path.resolve(ROOT, '.' + relativeTarget);
+    let resolvedPath = path.resolve(ROOT, '.' + relativeTarget);
+
+    if (!fs.existsSync(resolvedPath)) {
+      const srcCandidate = path.resolve(ROOT, 'src', '.' + relativeTarget);
+      if (
+        srcCandidate.startsWith(path.join(ROOT, 'src') + path.sep) &&
+        fs.existsSync(srcCandidate)
+      ) {
+        resolvedPath = srcCandidate;
+      }
+    }
 
     if (
       !resolvedPath.startsWith(ROOT + path.sep) ||

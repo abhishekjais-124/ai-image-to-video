@@ -18,6 +18,56 @@ import {
   saveVideoToOutputs
 } from '../engine/exporter.js';
 
+// Built-in lossless 1080x1920 SVG Data URLs so samples always load even in sandboxed/embedded previews
+const BUILTIN_SAMPLES = {
+  pyramid:
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#090714"/>
+      <stop offset="55%" stop-color="#2c1638"/>
+      <stop offset="80%" stop-color="#b55933"/>
+      <stop offset="100%" stop-color="#f2a649"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="50%" cy="32%" r="16%">
+      <stop offset="0%" stop-color="#fff4d2"/>
+      <stop offset="60%" stop-color="#f7b955" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#f7b955" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#sky)"/>
+  <circle cx="540" cy="614" r="280" fill="url(#moon)"/>
+  <polygon points="540,720 120,1520 960,1520" fill="#1c0e18"/>
+  <polygon points="540,720 540,1520 960,1520" fill="#11080f"/>
+  <rect y="1500" width="1080" height="420" fill="#0d060a"/>
+</svg>`),
+  nebula:
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <radialGradient id="nebula" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#ff6b9d" stop-opacity="0.9"/>
+      <stop offset="35%" stop-color="#6b2cf5" stop-opacity="0.7"/>
+      <stop offset="70%" stop-color="#0b133a" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#030511" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="42%" r="18%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="40%" stop-color="#ffe599"/>
+      <stop offset="100%" stop-color="#ff6b9d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#nebula)"/>
+  <circle cx="540" cy="806" r="240" fill="url(#core)"/>
+  <g fill="#ffffff" opacity="0.8">
+    <circle cx="180" cy="300" r="3"/><circle cx="880" cy="240" r="4"/><circle cx="720" cy="420" r="2.5"/>
+    <circle cx="320" cy="600" r="3.5"/><circle cx="920" cy="780" r="3"/><circle cx="140" cy="1100" r="4"/>
+    <circle cx="640" cy="1350" r="3"/><circle cx="390" cy="1520" r="5"/><circle cx="840" cy="1600" r="3.5"/>
+  </g>
+</svg>`)
+};
+
 const state = {
   aspectRatio: '9:16',
   resolution: '1080p',
@@ -74,16 +124,8 @@ function setToolsOpen(open) {
   try {
     localStorage.setItem('studio.toolsOpen', open ? '1' : '0');
   } catch (_) {
-    // Storage unavailable — panel state just won't persist
+    // Storage unavailable
   }
-}
-
-function setPlayButtonState() {
-  btnPlayPause.dataset.playing = String(state.isPlaying);
-  const label = state.isPlaying ? 'Pause' : 'Play';
-  btnPlayPause.setAttribute('aria-label', label);
-  const labelEl = document.getElementById('playBtnLabel');
-  if (labelEl) labelEl.textContent = label;
 }
 
 const btnShorts = document.getElementById('btnShorts');
@@ -134,6 +176,14 @@ const btnRunBatch = document.getElementById('btnRunBatch');
 const batchQueueListEl = document.getElementById('batchQueueList');
 const outputsListEl = document.getElementById('outputsList');
 
+function setPlayButtonState() {
+  btnPlayPause.dataset.playing = String(state.isPlaying);
+  const label = state.isPlaying ? 'Pause' : 'Play';
+  btnPlayPause.setAttribute('aria-label', label);
+  const labelEl = document.getElementById('playBtnLabel');
+  if (labelEl) labelEl.textContent = label;
+}
+
 function initDropdowns() {
   selModel.innerHTML = INHOUSE_MODELS.map(
     (m) => `<option value="${m.id}">${m.name}</option>`
@@ -173,12 +223,30 @@ function compileCustomCode(codeStr) {
   }
 }
 
+function resolveFallbackSampleDataUrl(src = '') {
+  if (String(src).includes('nebula')) return BUILTIN_SAMPLES.nebula;
+  return BUILTIN_SAMPLES.pyramid;
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (!String(src).startsWith('data:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => resolve(img);
-    img.onerror = (err) => reject(err);
+    img.onerror = () => {
+      // Fallback to embedded lossless SVG sample if relative/server path is unreachable
+      const fallback = resolveFallbackSampleDataUrl(src);
+      if (src !== fallback) {
+        const fbImg = new Image();
+        fbImg.onload = () => resolve(fbImg);
+        fbImg.onerror = (err) => reject(err);
+        fbImg.src = fallback;
+      } else {
+        reject(new Error('Failed to load image'));
+      }
+    };
     img.src = src;
   });
 }
@@ -186,10 +254,10 @@ function loadImageElement(src) {
 async function loadSourceImage(src, displayName = 'image') {
   const img = await loadImageElement(src);
   state.imgElement = img;
-  state.imageSrc = src;
+  state.imageSrc = img.src || src;
   state.imageName = displayName;
   imageFileNameEl.textContent = displayName;
-  imageThumbEl.src = src;
+  imageThumbEl.src = img.src || src;
 
   updateResolutionCheck();
   rebuildScenePlanFromModel({ autoSelectPreset: false });
@@ -352,14 +420,40 @@ function animationLoop(now) {
   requestAnimationFrame(animationLoop);
 }
 
+/**
+ * Trigger browser file download reliably across Chrome, Safari, and embedded webviews
+ */
+function triggerBrowserDownload(blob, fileName) {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = blobUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    if (a.parentNode) a.parentNode.removeChild(a);
+  }, 500);
+  return blobUrl;
+}
+
 async function handleExportSingleClip() {
-  if (state.isExporting || !state.imgElement) return;
+  if (state.isExporting) return;
+
   state.isExporting = true;
   btnExportMp4.disabled = true;
+  btnExportMp4.textContent = 'Starting…';
   exportProgressWrap.style.display = 'flex';
+  exportProgressBar.style.width = '2%';
+  exportProgressText.textContent = 'Preparing 1080p 30 FPS encoder…';
   exportVerifyBadge.style.display = 'none';
 
   try {
+    // Ensure source image is loaded even if initial fetch had not finished
+    if (!state.imgElement) {
+      await loadSourceImage(state.imageSrc, state.imageName);
+    }
+
     const result = await exportClipToMp4({
       img: state.imgElement,
       duration: state.duration,
@@ -373,10 +467,12 @@ async function handleExportSingleClip() {
       mirrorCtx: stageCtx,
       onProgress: ({ frame, totalFrames, percent, phase }) => {
         exportProgressBar.style.width = `${percent}%`;
+        btnExportMp4.textContent =
+          phase === 'muxing' ? 'Muxing MP4…' : `Exporting ${percent}%…`;
         exportProgressText.textContent =
           phase === 'muxing'
-            ? 'Finalizing…'
-            : `Rendering frame ${frame} of ${totalFrames}`;
+            ? 'Finalizing FastStart H.264 MP4…'
+            : `Rendering frame ${frame} of ${totalFrames} (${percent}%)`;
       }
     });
 
@@ -385,36 +481,39 @@ async function handleExportSingleClip() {
       .replace(/[^a-zA-Z0-9_-]/g, '-');
     const outName = `${cleanStem}-${state.modelId}-s${state.variationSeed}-${state.aspectRatio.replace(':', 'x')}-${state.resolution}-30fps.${result.ext}`;
 
-    const saved = await saveVideoToOutputs(result.bytes, outName);
+    // 1. Trigger browser download immediately (never blocked by server status)
+    const blobUrl = triggerBrowserDownload(result.blob, outName);
 
-    const url = URL.createObjectURL(result.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = saved.fileName || outName;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    // 2. Also persist to media/outputs/ on disk if local server is running
+    const saved = await saveVideoToOutputs(result.bytes, outName);
+    const downloadHref = saved?.url || blobUrl;
+    const finalFileName = saved?.fileName || outName;
 
     const v = result.verification;
     const sizeMb = v.byteLength / (1024 * 1024);
     const kb = sizeMb >= 1 ? `${sizeMb.toFixed(1)} MB` : `${(v.byteLength / 1024).toFixed(0)} KB`;
+
+    btnExportMp4.textContent = '✓ Exported MP4';
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner ok';
     exportVerifyBadge.innerHTML =
-      `Saved <a href="${saved.url}" target="_blank">${escapeHtml(saved.fileName)}</a> ` +
+      `✓ Ready: <a href="${downloadHref}" download="${escapeHtml(finalFileName)}" target="_blank"><strong>Download ${escapeHtml(finalFileName)}</strong></a> ` +
       `<span class="meta">· ${v.width} × ${v.height} · ${v.fps} fps · ${v.durationSec}s · ${kb}</span>`;
-    exportVerifyBadge.title = `${v.codec} · ${v.frameCount} frames · saved in media/outputs/`;
+    exportVerifyBadge.title = `${v.codec} · ${v.frameCount} frames`;
 
     await refreshMediaLists();
   } catch (err) {
+    btnExportMp4.textContent = 'Export Failed';
     exportVerifyBadge.style.display = 'block';
     exportVerifyBadge.className = 'res-banner warn';
-    exportVerifyBadge.textContent = `Export failed: ${err.message}`;
+    exportVerifyBadge.textContent = `Export failed: ${err.message || err}`;
   } finally {
     state.isExporting = false;
     btnExportMp4.disabled = false;
     setTimeout(() => {
+      btnExportMp4.textContent = 'Export MP4';
       exportProgressWrap.style.display = 'none';
-    }, 1200);
+    }, 2200);
   }
 }
 
@@ -455,7 +554,7 @@ function renderBatchQueueUI() {
         <div class="batch-item-top">
           <span class="batch-name" title="${escapeHtml(item.name)}"><span class="n">${String(i + 1).padStart(2, '0')}</span>${escapeHtml(item.name)}</span>
           <span class="batch-status" data-status="${item.status}">
-            ${statusLabel[item.status] || item.status}${item.outputUrl ? ` · <a href="${item.outputUrl}" target="_blank">Open</a>` : ''}
+            ${statusLabel[item.status] || item.status}${item.outputUrl ? ` · <a href="${item.outputUrl}" download target="_blank">Download</a>` : ''}
           </span>
         </div>
         <div class="batch-item-controls">
@@ -465,7 +564,7 @@ function renderBatchQueueUI() {
             <option value="4" ${item.duration === 4 ? 'selected' : ''}>4s</option>
             <option value="5" ${item.duration === 5 ? 'selected' : ''}>5s</option>
           </select>
-          <button class="batch-remove-btn" data-index="${i}" aria-label="Remove from queue">✕</button>
+          <button type="button" class="batch-remove-btn" data-index="${i}" aria-label="Remove from queue">✕</button>
         </div>
         <input type="text" class="batch-title-inp" data-index="${i}" value="${escapeHtml(item.factTitle)}" placeholder="Headline (optional)" />
       </div>`;
@@ -549,18 +648,20 @@ async function runBatchExport() {
         scenePlan: plan,
         customDrawFn: batchCustomFn,
         mirrorCtx: stageCtx,
-        onProgress: ({ frame, totalFrames, percent }) => {
+        onProgress: ({ percent }) => {
           exportProgressBar.style.width = `${percent}%`;
+          btnRunBatch.textContent = `Clip ${i + 1}/${state.batchQueue.length} (${percent}%)…`;
           exportProgressText.textContent = `Clip ${i + 1} of ${state.batchQueue.length} · ${percent}%`;
         }
       });
 
       const stem = item.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-');
       const fileName = `batch-${String(i + 1).padStart(2, '0')}-${stem}-${item.presetId}-${state.resolution}-30fps.${res.ext}`;
+      const blobUrl = triggerBrowserDownload(res.blob, fileName);
       const saved = await saveVideoToOutputs(res.bytes, fileName);
 
       item.status = 'done';
-      item.outputUrl = saved.url;
+      item.outputUrl = saved?.url || blobUrl;
       renderBatchQueueUI();
     }
 
@@ -568,6 +669,7 @@ async function runBatchExport() {
   } finally {
     state.isExporting = false;
     btnRunBatch.disabled = false;
+    btnRunBatch.textContent = 'Render batch';
     btnExportMp4.disabled = false;
     setTimeout(() => {
       exportProgressWrap.style.display = 'none';
@@ -578,11 +680,11 @@ async function runBatchExport() {
 async function refreshMediaLists() {
   try {
     const res = await fetch('/api/media');
+    if (!res.ok) return;
     const data = await res.json();
     state.outputsList = data.outputs || [];
     state.scenesList = data.scenes || [];
 
-    // Populate Saved / Agent-Generated Scenes dropdown
     selSavedScene.innerHTML =
       `<option value="">${state.scenesList.length ? `Load saved scene (${state.scenesList.length})…` : 'No saved scenes yet'}</option>` +
       state.scenesList
@@ -607,7 +709,7 @@ async function refreshMediaLists() {
       })
       .join('');
   } catch (_) {
-    // Ignore fetch error
+    // Ignore fetch error in standalone preview
   }
 }
 
@@ -656,14 +758,16 @@ async function loadSavedSceneFromUrl(url) {
     syncEditorContent();
 
     if (data.imageSrc && data.imageSrc !== state.imageSrc) {
-      await loadImageElement(data.imageSrc).then((img) => {
-        state.imgElement = img;
-        state.imageSrc = data.imageSrc;
-        state.imageName = data.imageSrc.split('/').pop();
-        imageFileNameEl.textContent = state.imageName;
-        imageThumbEl.src = data.imageSrc;
-        updateResolutionCheck();
-      }).catch(() => {});
+      await loadImageElement(data.imageSrc)
+        .then((img) => {
+          state.imgElement = img;
+          state.imageSrc = img.src || data.imageSrc;
+          state.imageName = data.imageSrc.split('/').pop();
+          imageFileNameEl.textContent = state.imageName;
+          imageThumbEl.src = state.imageSrc;
+          updateResolutionCheck();
+        })
+        .catch(() => {});
     }
 
     renderCurrentFrame();
@@ -873,7 +977,7 @@ function bindEvents() {
   btnAddSampleBatch.addEventListener('click', () => {
     addItemToBatchQueue({
       name: 'sample-ancient-pyramid.svg',
-      src: '/media/samples/sample-ancient-pyramid.svg',
+      src: BUILTIN_SAMPLES.pyramid,
       presetId: 'documentary-kenburns',
       duration: 3,
       factTitle: 'FACT #1: PYRAMID ALIGNMENT',
@@ -881,7 +985,7 @@ function bindEvents() {
     });
     addItemToBatchQueue({
       name: 'sample-space-nebula.svg',
-      src: '/media/samples/sample-space-nebula.svg',
+      src: BUILTIN_SAMPLES.nebula,
       presetId: '3d-perspective-tilt',
       duration: 3,
       factTitle: 'FACT #2: STELLAR NURSERIES',
@@ -917,7 +1021,7 @@ function handleMultipleBatchFiles(files) {
   });
 }
 
-// Initialize Studio
+// Initialize Studio — always start animationLoop even if image loads via fallback
 let toolsOpenSaved = false;
 try {
   toolsOpenSaved = localStorage.getItem('studio.toolsOpen') === '1';
@@ -930,6 +1034,5 @@ initDropdowns();
 updateStageDisplayGeometry();
 bindEvents();
 refreshMediaLists();
-loadSourceImage(state.imageSrc, state.imageName).then(() => {
-  requestAnimationFrame(animationLoop);
-});
+requestAnimationFrame(animationLoop);
+loadSourceImage(state.imageSrc, state.imageName).catch(() => {});
