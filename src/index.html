@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Image to Video Studio (Fact Shorts 1080p)</title>
+  <style>
+    :root {
+      --bg: #090b10;
+      --card-bg: #121620;
+      --border: #222938;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --gold: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    
+    header {
+      padding: 16px 28px;
+      background: #0f131c;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.5px; }
+    .brand span { font-size: 0.75rem; background: rgba(99, 102, 241, 0.2); color: #818cf8; padding: 3px 8px; border-radius: 9999px; border: 1px solid rgba(99, 102, 241, 0.4); }
+    .header-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; margin-left: 16px; transition: color 0.2s; }
+    .header-links a:hover { color: var(--text); }
+
+    .main-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px 1fr 420px;
+      gap: 20px;
+      padding: 24px;
+      max-width: 1700px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .panel-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+
+    /* Controls */
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    label { font-size: 0.8rem; text-transform: uppercase; font-weight: 600; color: var(--text-muted); letter-spacing: 0.5px; }
+    select, input[type="text"], textarea {
+      background: #0b0e14;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+
+    .radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .radio-btn {
+      border: 1px solid var(--border);
+      background: #0b0e14;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .radio-btn.active { border-color: var(--accent); background: rgba(99, 102, 241, 0.15); color: #fff; font-weight: 600; }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      background: #0c0f17;
+      transition: border-color 0.2s;
+    }
+    .dropzone:hover { border-color: var(--accent); }
+    .dropzone input { display: none; }
+    .dropzone p { font-size: 0.85rem; color: var(--text-muted); margin-top: 6px; }
+
+    /* Stage Preview */
+    .stage-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #080a0e;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      min-height: 580px;
+    }
+    .stage-container {
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+      transition: width 0.3s, height 0.3s;
+    }
+    #previewFrame {
+      border: none;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Actions */
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-record {
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s;
+    }
+    .btn-record:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Code editor */
+    .code-box {
+      flex: 1;
+      background: #07090e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      color: #7dd3fc;
+      overflow: auto;
+      white-space: pre-wrap;
+      max-height: 480px;
+    }
+
+    /* Status indicator */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: #1e293b;
+      color: #94a3b8;
+    }
+    .status-badge.recording { background: rgba(220, 38, 38, 0.2); color: #f87171; border: 1px solid rgba(220, 38, 38, 0.4); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>🎬 AI Image-to-Video Studio</h1>
+      <span>Fact Shorts Edition</span>
+    </div>
+    <div class="header-links">
+      <span class="status-badge" id="renderStatus">⚡ Standby</span>
+      <a href="https://github.com/abhishekjais-124/ai-image-to-video" target="_blank">GitHub Repository ↗</a>
+    </div>
+  </header>
+
+  <main class="main-layout">
+    <!-- Panel 1: Director Settings -->
+    <div class="panel">
+      <div class="panel-title">⚙️ Scene Director</div>
+
+      <div class="form-group">
+        <label>1. Source Image</label>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*" />
+          <div style="font-size: 1.8rem;">🖼️</div>
+          <strong>Click or Drag Image Here</strong>
+          <p id="imageFileName">sample-ancient-pyramid.svg (loaded)</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>2. Format & Resolution</label>
+        <div class="radio-grid">
+          <div class="radio-btn active" id="btnShorts" onclick="setAspectRatio('9:16')">📱 9:16 Shorts</div>
+          <div class="radio-btn" id="btnLandscape" onclick="setAspectRatio('16:9')">🖥️ 16:9 Widescreen</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>3. Quality & Duration</label>
+        <div class="radio-grid">
+          <select id="selResolution" onchange="updateDimensions()">
+            <option value="1080p" selected>1080p Full HD</option>
+            <option value="720p">720p HD</option>
+          </select>
+          <select id="selDuration">
+            <option value="3">3 Seconds</option>
+            <option value="4" selected>4 Seconds</option>
+            <option value="5">5 Seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>4. Fact-Short Preset Style</label>
+        <select id="selPreset" onchange="generateScene()">
+          <option value="documentary-kenburns" selected>📽️ Documentary Ken Burns + Dust</option>
+          <option value="3d-perspective-tilt">✨ 3D Perspective Tilt + Spotlight</option>
+          <option value="mystery-fog-shake">🌫️ Mystery Fog + Handheld Pulse</option>
+          <option value="scifi-cyber-glitch">⚡ Sci-Fi Cyber Grid + Glitch</option>
+          <option value="vintage-film-grain">🎞️ Vintage Film Grain + Light Leaks</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>5. Fact Text Overlay (Optional)</label>
+        <input type="text" id="factTitle" placeholder="DID YOU KNOW?" value="DID YOU KNOW?" oninput="generateScene()" />
+        <input type="text" id="factSubtitle" placeholder="The Great Pyramid aligns with true north within 3/60th of a degree." value="The Great Pyramid aligns with true north within 3/60th of a degree." oninput="generateScene()" />
+      </div>
+
+      <button class="btn-primary" onclick="generateScene()">🔄 Regenerate Animation Code</button>
+    </div>
+
+    <!-- Panel 2: Live 1080p Stage Preview -->
+    <div class="panel stage-wrapper">
+      <div class="stage-container" id="stageContainer" style="width: 324px; height: 576px;">
+        <iframe id="previewFrame"></iframe>
+      </div>
+
+      <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center; width: 100%; justify-content: center;">
+        <button class="btn-record" id="btnRecord" onclick="recordAndExportVideo()">
+          🔴 Export 1080p MP4 / WebM
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel 3: Live Code Inspector (.html / .css / .tsx) -->
+    <div class="panel">
+      <div class="panel-title">
+        <span>💻 Generated Scene Code</span>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-muted);">
+        The AI generates this standalone code for every image. You can copy it, save it, or edit it directly.
+      </p>
+      <div class="code-box" id="codeDisplay">// Generated HTML/CSS/Canvas Code will appear here...</div>
+      <button class="btn-primary" style="background: #1e293b;" onclick="copyCode()">📋 Copy Code</button>
+    </div>
+  </main>
+
+  <script>
+    let currentAspectRatio = '9:16';
+    let currentImageSrc = 'media/samples/sample-ancient-pyramid.svg';
+    let currentGeneratedHtml = '';
+
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const imageFileName = document.getElementById('imageFileName');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          currentImageSrc = event.target.result;
+          imageFileName.textContent = file.name;
+          generateScene();
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function setAspectRatio(ratio) {
+      currentAspectRatio = ratio;
+      document.getElementById('btnShorts').classList.toggle('active', ratio === '9:16');
+      document.getElementById('btnLandscape').classList.toggle('active', ratio === '16:9');
+      updateDimensions();
+      generateScene();
+    }
+
+    function updateDimensions() {
+      const container = document.getElementById('stageContainer');
+      if (currentAspectRatio === '9:16') {
+        container.style.width = '324px';
+        container.style.height = '576px';
+      } else {
+        container.style.width = '640px';
+        container.style.height = '360px';
+      }
+    }
+
+    function generateScene() {
+      const resolution = document.getElementById('selResolution').value;
+      const duration = parseInt(document.getElementById('selDuration').value);
+      const preset = document.getElementById('selPreset').value;
+      const factTitle = document.getElementById('factTitle').value;
+      const factSubtitle = document.getElementById('factSubtitle').value;
+
+      const width = currentAspectRatio === '9:16' ? (resolution === '1080p' ? 1080 : 720) : (resolution === '1080p' ? 1920 : 1280);
+      const height = currentAspectRatio === '9:16' ? (resolution === '1080p' ? 1920 : 1280) : (resolution === '1080p' ? 1080 : 720);
+
+      let particleScript = '';
+      if (preset === 'documentary-kenburns') {
+        particleScript = `
+          const canvas = document.getElementById('effectCanvas');
+          const ctx = canvas.getContext('2d');
+          const particles = Array.from({length: 60}, () => ({
+            x: Math.random() * ${width}, y: Math.random() * ${height},
+            radius: Math.random() * 2.8 + 0.6, alpha: Math.random() * 0.7 + 0.2,
+            vx: (Math.random() - 0.5) * 0.4, vy: - (Math.random() * 0.8 + 0.3)
+          }));
+          function loop() {
+            ctx.clearRect(0,0,${width},${height});
+            particles.forEach(p => {
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+              ctx.fillStyle = \`rgba(255, 225, 160, \${p.alpha})\`;
+              ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255, 200, 70, 0.9)';
+              ctx.fill();
+              p.x += p.vx; p.y += p.vy;
+              if (p.y < 0) p.y = ${height};
+            });
+            requestAnimationFrame(loop);
+          }
+          loop();
+        `;
+      } else if (preset === '3d-perspective-tilt') {
+        particleScript = `
+          const canvas = document.getElementById('effectCanvas');
+          const ctx = canvas.getContext('2d');
+          let t = 0;
+          function loop() {
+            ctx.clearRect(0,0,${width},${height});
+            t += 0.02;
+            const spotX = ${width} * 0.5 + Math.sin(t) * (${width} * 0.3);
+            const spotY = ${height} * 0.4 + Math.cos(t) * (${height} * 0.2);
+            const grad = ctx.createRadialGradient(spotX, spotY, 20, spotX, spotY, ${width} * 0.7);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+            grad.addColorStop(0.5, 'rgba(255, 210, 150, 0.12)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,${width},${height});
+            requestAnimationFrame(loop);
+          }
+          loop();
+        `;
+      } else {
+        particleScript = `
+          const canvas = document.getElementById('effectCanvas');
+          const ctx = canvas.getContext('2d');
+          let t = 0;
+          function loop() {
+            ctx.clearRect(0,0,${width},${height});
+            t += 3;
+            ctx.fillStyle = 'rgba(0, 240, 255, 0.2)';
+            ctx.fillRect(0, (t * 4) % ${height}, ${width}, 4);
+            requestAnimationFrame(loop);
+          }
+          loop();
+        `;
+      }
+
+      currentGeneratedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body, html { width:${width}px; height:${height}px; overflow:hidden; background:#000; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+    #stage { position:relative; width:${width}px; height:${height}px; overflow:hidden; perspective:1200px; }
+    .scene-img {
+      position:absolute; top:-6%; left:-6%; width:112%; height:112%; object-fit:cover;
+      animation: camera ${duration}s cubic-bezier(0.25, 1, 0.5, 1) infinite alternate;
+      will-change: transform, filter;
+    }
+    @keyframes camera {
+      0% { transform: scale(1.0) translate3d(0, 0, 0) rotate(0deg); filter: brightness(0.96) contrast(1.05); }
+      100% { transform: scale(1.15) translate3d(-20px, -30px, 0) rotate(0.8deg); filter: brightness(1.1) contrast(1.15); }
+    }
+    #effectCanvas { position:absolute; top:0; left:0; width:${width}px; height:${height}px; pointer-events:none; mix-blend-mode:screen; }
+    .vignette { position:absolute; inset:0; background:radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.65) 90%, rgba(0,0,0,0.95) 100%); pointer-events:none; }
+    .fact-card {
+      position:absolute; bottom:${currentAspectRatio === '9:16' ? '220px' : '50px'}; left:50%; transform:translateX(-50%);
+      width:86%; text-align:center; color:#fff; text-shadow:0 4px 20px rgba(0,0,0,0.9); z-index:10; pointer-events:none;
+    }
+    .fact-title {
+      font-size:${currentAspectRatio === '9:16' ? '54px' : '40px'}; font-weight:900; text-transform:uppercase; letter-spacing:2px;
+      background:linear-gradient(180deg, #ffffff 20%, #ffd166 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:12px;
+    }
+    .fact-subtitle {
+      font-size:${currentAspectRatio === '9:16' ? '30px' : '24px'}; font-weight:600; color:#e2e8f0; line-height:1.35;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img class="scene-img" src="${currentImageSrc}" />
+    <canvas id="effectCanvas" width="${width}" height="${height}"></canvas>
+    <div class="vignette"></div>
+    ${factTitle ? `<div class="fact-card"><div class="fact-title">${factTitle}</div>${factSubtitle ? `<div class="fact-subtitle">${factSubtitle}</div>` : ''}</div>` : ''}
+  </div>
+  <script>${particleScript}</` + `script>
+</body>
+</html>`;
+
+      // Update Preview iFrame
+      const frame = document.getElementById('previewFrame');
+      frame.srcdoc = currentGeneratedHtml;
+
+      // Update Code Box
+      document.getElementById('codeDisplay').textContent = currentGeneratedHtml;
+    }
+
+    async function recordAndExportVideo() {
+      const btn = document.getElementById('btnRecord');
+      const status = document.getElementById('renderStatus');
+      const duration = parseInt(document.getElementById('selDuration').value);
+      const resolution = document.getElementById('selResolution').value;
+
+      btn.disabled = true;
+      status.className = 'status-badge recording';
+      status.textContent = '🔴 Capturing Video...';
+
+      const width = currentAspectRatio === '9:16' ? (resolution === '1080p' ? 1080 : 720) : (resolution === '1080p' ? 1920 : 1280);
+      const height = currentAspectRatio === '9:16' ? (resolution === '1080p' ? 1920 : 1280) : (resolution === '1080p' ? 1080 : 720);
+
+      // Create an offscreen canvas capture stream
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = width;
+      offscreenCanvas.height = height;
+      const offCtx = offscreenCanvas.getContext('2d');
+
+      const img = new Image();
+      img.src = currentImageSrc;
+      await new Promise(r => img.onload = r);
+
+      const stream = offscreenCanvas.captureStream(60);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 12000000 });
+      const chunks = [];
+
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `fact-short-${currentAspectRatio.replace(':', 'x')}-${resolution}-${Date.now()}.webm`;
+        a.click();
+
+        btn.disabled = false;
+        status.className = 'status-badge';
+        status.textContent = '⚡ Standby';
+      };
+
+      recorder.start();
+      const startTime = performance.now();
+
+      function animate() {
+        const now = performance.now();
+        const elapsed = (now - startTime) / 1000;
+        const progress = Math.min(elapsed / duration, 1.0);
+
+        // Render zoom and pan
+        offCtx.clearRect(0, 0, width, height);
+        const scale = 1.0 + progress * 0.15;
+        const tx = progress * -25;
+        const ty = progress * -35;
+
+        offCtx.save();
+        offCtx.translate(width / 2 + tx, height / 2 + ty);
+        offCtx.scale(scale, scale);
+        offCtx.drawImage(img, -width / 2, -height / 2, width, height);
+        offCtx.restore();
+
+        // Vignette
+        const grad = offCtx.createRadialGradient(width/2, height/2, width*0.2, width/2, height/2, width*0.7);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.8)');
+        offCtx.fillStyle = grad;
+        offCtx.fillRect(0, 0, width, height);
+
+        // Text Overlay
+        const title = document.getElementById('factTitle').value;
+        const subtitle = document.getElementById('factSubtitle').value;
+        if (title) {
+          offCtx.textAlign = 'center';
+          offCtx.fillStyle = '#ffd166';
+          offCtx.font = `900 ${currentAspectRatio === '9:16' ? 52 : 38}px sans-serif`;
+          offCtx.shadowColor = 'rgba(0,0,0,0.85)';
+          offCtx.shadowBlur = 15;
+          const textY = currentAspectRatio === '9:16' ? height - 260 : height - 80;
+          offCtx.fillText(title, width / 2, textY);
+          if (subtitle) {
+            offCtx.fillStyle = '#ffffff';
+            offCtx.font = `600 ${currentAspectRatio === '9:16' ? 28 : 22}px sans-serif`;
+            offCtx.fillText(subtitle, width / 2, textY + 45);
+          }
+        }
+
+        if (elapsed < duration) {
+          requestAnimationFrame(animate);
+        } else {
+          recorder.stop();
+        }
+      }
+
+      animate();
+    }
+
+    function copyCode() {
+      navigator.clipboard.writeText(currentGeneratedHtml);
+      alert('Scene code copied to clipboard!');
+    }
+
+    // Initial render
+    generateScene();
+  </script>
+</body>
+</html>

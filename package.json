@@ -1,0 +1,21 @@
+{
+  "name": "ai-image-to-video",
+  "version": "1.0.0",
+  "description": "Convert static images into **3–5 second cinematic 720p / 1080p video clips** (`9:16 Vertical Shorts` & `16:9 Widescreen`) at **$0 cost** using **AI Code-Driven Animation (`.html` / `.css` / `.tsx` / `WebGL Canvas`)** — no local GPU hardware required.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abhishekjais-124/ai-image-to-video.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/abhishekjais-124/ai-image-to-video/issues"
+  },
+  "homepage": "https://github.com/abhishekjais-124/ai-image-to-video#readme"
+}
