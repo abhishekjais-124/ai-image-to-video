@@ -1292,6 +1292,8 @@ function initStudio() {
   try { bindEvents(); } catch (e) { console.warn(e); }
   try { refreshMediaLists(); } catch (e) { console.warn(e); }
   try { requestAnimationFrame(animationLoop); } catch (e) { console.warn(e); }
+  // Tells the start-up guard in index.html that the scripts loaded and ran.
+  window.__studioReady = true;
   loadSourceImage(state.imageSrc, state.imageName).catch((err) => {
     console.warn('[Studio] Fallback image load:', err);
   });

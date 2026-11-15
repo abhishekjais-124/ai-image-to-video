@@ -670,6 +670,31 @@
     </aside>
   </main>
 
-  <script type="module" src="./ui/app.js?v=1.5.2"></script>
+  <!-- If the studio's scripts fail to load or crash on start-up, say so instead of leaving a blank, dead page. -->
+  <script>
+    (function () {
+      function showStartupError(detail) {
+        if (window.__studioReady || document.getElementById('startupError')) return;
+        var box = document.createElement('div');
+        box.id = 'startupError';
+        box.setAttribute('role', 'alert');
+        box.style.cssText = 'position:fixed;left:50%;top:72px;transform:translateX(-50%);z-index:9999;max-width:560px;padding:14px 18px;border-radius:10px;background:#2a1215;border:1px solid #f08a8a;color:#ffd7d7;font:14px/1.45 system-ui,sans-serif;';
+        box.textContent = 'The studio could not start. Make sure the server is running (npm start in the project folder), then reload with Cmd+Shift+R (Ctrl+Shift+R on Windows) so the browser fetches the current scripts.' + (detail ? ' Details: ' + detail : '');
+        document.body.appendChild(box);
+      }
+      window.__showStartupError = showStartupError;
+      window.addEventListener('error', function (e) {
+        if (!window.__studioReady) showStartupError(e && e.message ? e.message : '');
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (!window.__studioReady) showStartupError(e && e.reason && e.reason.message ? e.reason.message : '');
+      });
+      // A module that never executes (failed fetch, stale cached import) fires no error on window in every browser.
+      window.addEventListener('load', function () {
+        setTimeout(function () { if (!window.__studioReady) showStartupError('scripts did not run'); }, 4000);
+      });
+    })();
+  </script>
+  <script type="module" src="./ui/app.js?v=2.0.0" onerror="window.__showStartupError('app.js failed to load')"></script>
 </body>
 </html>
